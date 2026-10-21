@@ -127,7 +127,8 @@ try {
   assert.equal(authorizations, 1, 'reopening the page must not open Google login');
   assert.equal(refreshCount, 1);
   assert.equal(gisScripts, 0, 'server mode must not load the browser token client');
-  await page.getByRole('button', { name: '설정 및 연동', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '연동 설정', exact: true }).click();
   assert.equal(await page.getByLabel('Google OAuth 클라이언트 ID').count(), 0, 'server secrets/credentials are never requested in the app');
   const downloadEvent = page.waitForEvent('download');
   await page.getByRole('button', { name: '할 일 백업 다운로드', exact: true }).click();
