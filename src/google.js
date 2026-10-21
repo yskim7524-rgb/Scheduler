@@ -40,7 +40,11 @@ export async function fetchCalendarEvents(token, from, until, signal) {
     const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
       headers: { Authorization: `Bearer ${token}` }, signal,
     });
-    if (response.status === 401) throw new Error('Google 연결이 만료되었습니다. 다시 연결해 주세요.');
+    if (response.status === 401) {
+      const error = new Error('Google 연결이 만료되었습니다. 다시 연결해 주세요.');
+      error.status = 401;
+      throw error;
+    }
     if (!response.ok) throw new Error(`일정을 불러오지 못했습니다 (${response.status}). Calendar API 사용 설정과 접근 권한을 확인해 주세요.`);
     const data = await response.json();
     events.push(...(data.items || []).map(normalizeGoogleEvent).filter(Boolean));

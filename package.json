@@ -7,7 +7,8 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test src/domain.test.js"
+    "test": "node --test src/domain.test.js",
+    "test:browser": "node tests/browser.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
+    "playwright": "^1.64.1",
     "vite": "^6.4.1"
   }
 }

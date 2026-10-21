@@ -1,0 +1,131 @@
+/* Task editing and daily focus */
+.task-row { gap: 9px; }
+.task-info strong { font-size: 12px; line-height: 1.7; }
+.task-info small { flex-wrap: wrap; row-gap: 4px; font-size: 10px; line-height: 1.5; }
+.task-info small .priority { margin-left: 2px; padding: 2px 5px; font-size: 9px; }
+.task-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
+.task-actions .icon-button { width: 29px; height: 32px; color: #8c9b8c; }
+.task-actions .icon-button:hover { color: #365e43; background: #edf4e9; }
+.task-actions .pinned { color: #3e7650; background: #e6f1e1; }
+.task-actions .delete-task:hover { color: #af6551; background: #fff0e9; }
+.focus-panel { margin-bottom: 24px; background: #fcfefb; border-color: #dce7d7; }
+.focus-panel .panel-heading { padding-bottom: 13px; }
+.focus-panel .section-title > svg { color: #6b9561; }
+.focus-progress { color: #79926e; font-size: 11px; }
+.focus-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 0 21px 16px; }
+.focus-items .task-row { padding: 12px; border: 1px solid #e1eadd; border-radius: 7px; background: white; flex-wrap: wrap; min-height: 100px; align-content: center; }
+.focus-items .task-info { flex-basis: calc(100% - 40px); }
+.focus-items .task-actions { margin-left: auto; }
+.focus-items .task-info strong { font-size: 11px; }
+.focus-empty { min-height: 100px; border: 1px dashed #dce6d6; background: #f6f9f2; color: #8c9f81; font-size: 10px; border-radius: 7px; flex-wrap: wrap; gap: 6px; padding: 15px 12px; line-height: 1.8; }
+.focus-empty > span { width: 21px; height: 21px; display: grid; place-items: center; background: #e9f0e2; border-radius: 50%; color: #8a9f7b; margin-right: 3px; }
+.focus-empty:hover { background: #edf4e5; }
+.focus-footer { border-top: 1px solid #eaf0e6; padding: 12px 21px; display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.focus-footer > span { color: #8b9b81; font-size: 10px; line-height: 1.8; }
+.focus-footer .text-button { color: #6a8561; flex-shrink: 0; font-size: 10px; }
+.focus-notice { font-size: 11px; color: #78906a; padding: 10px 22px; line-height: 1.8; }
+.full-panel .task-list { padding-bottom: 5px; }
+
+/* Calendar list view */
+.calendar-panel > .panel-heading { flex-wrap: wrap; }
+.week-controls { flex-wrap: wrap; row-gap: 8px; }
+.calendar-view-toggle { display: flex; align-items: center; padding: 3px; border: 1px solid #e5ebe1; border-radius: 6px; gap: 2px; margin-right: 8px; background: #fafcf8; }
+.calendar-view-toggle button { padding: 5px 8px; border-radius: 4px; font-size: 10px; color: #8a9b81; gap: 5px; }
+.calendar-view-toggle button[aria-pressed="true"] { background: #e7f0e0; color: #507143; }
+.calendar-agenda { display: none; border-top: 1px solid #eaf0e5; padding: 0 21px; }
+.layout-list .calendar-scroll { display: none; }
+.layout-list .calendar-agenda { display: block; }
+.agenda-day { display: flex; gap: 19px; border-bottom: 1px solid #edf1e9; padding: 18px 0; }
+.agenda-day:last-child { border-bottom: 0; }
+.agenda-date { width: 70px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 2px; }
+.agenda-date > strong { font-size: 24px; font-weight: 500; line-height: 1.4; color: #697c61; }
+.agenda-date > span { font-size: 10px; color: #91a087; }
+.agenda-date > small { font-size: 9px; color: #608b50; background: #e9f3e2; padding: 3px 8px; border-radius: 8px; margin-top: 4px; }
+.agenda-today .agenda-date > strong { color: #3e724b; font-weight: 650; }
+.agenda-events { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: center; }
+.agenda-event { border-left: 3px solid #9bc5a1; background: #f0f6ed; color: #57724b; border-radius: 6px; padding: 12px 15px; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; text-align: left; }
+.agenda-event.personal { background: #f4f0fa; border-color: #b7a1d3; color: #88749e; }
+.agenda-event.focus { background: #eff4fb; border-color: #9db9df; color: #6c8ab2; }
+.agenda-event strong { font-size: 12px; line-height: 1.7; font-weight: 500; overflow-wrap: anywhere; }
+.agenda-time, .agenda-event small { display: flex; align-items: center; gap: 5px; font-size: 10px; opacity: .85; }
+.agenda-empty { font-size: 11px; color: #a2af99; margin: 8px 0; line-height: 1.9; grid-column: 1/-1; }
+
+/* Distinct deadlines and connection status */
+.deadline-groups { padding: 0 21px 16px; }
+.deadline-group { padding: 15px 0 4px; border-top: 1px solid #edf1e8; }
+.deadline-group:first-child { border-top: 0; padding-top: 2px; }
+.deadline-group-heading { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 8px; }
+.deadline-group-heading h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 11px; color: #8a9c7f; font-weight: 500; }
+.deadline-group-heading h3 > span { border-radius: 4px; background: #f0f4eb; padding: 2px 5px; font-size: 9px; }
+.deadline-group.today h3 { color: #aa7950; }
+.deadline-group.today h3 > span { background: #fbefdf; }
+.deadline-group.overdue h3 { color: #b07365; }
+.deadline-group.overdue h3 > span { background: #faeae5; }
+.deadline-group-heading > small { font-size: 10px; color: #9aa88e; }
+.deadline-summary-row { display: flex; justify-content: flex-start; align-items: center; text-align: left; width: 100%; gap: 12px; padding: 10px 0; border-radius: 5px; }
+.deadline-summary-title { flex: 1; min-width: 0; }
+.deadline-summary-title strong { display: block; font-size: 11px; line-height: 1.8; font-weight: 450; overflow-wrap: anywhere; }
+.deadline-summary-title small { font-size: 9px; color: #9aa98e; display: block; margin-top: 4px; }
+.deadline-overflow { font-size: 9px; color: #a1ac97; margin: 5px 0 10px; }
+.deadline-group.today .task-row { background: #fdf9f1; margin-inline: -9px; padding-inline: 9px; border-radius: 7px; }
+.deadline-group.overdue .task-info .due-text { color: #b57565; }
+.connection-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; flex: none !important; }
+.connection-banner .connection-actions .text-button { color: #8b9d80; font-size: 10px; white-space: nowrap; }
+.connection-banner p { font-size: 11px; line-height: 1.8; }
+.connection-banner strong { font-size: 12px; }
+.connection-banner.connection-attention { background: #fbf8f0; border-color: #ebe4d2; }
+.connection-attention > div > strong { color: #96805b; }
+.connection-attention > div > p { color: #a1957b; }
+
+@media (max-width: 1100px) {
+  .focus-items { gap: 8px; padding-inline: 16px; }
+  .focus-items .task-row { padding: 10px; }
+  .focus-items .task-info strong { font-size: 10px; }
+  .task-actions .icon-button { width: 27px; min-width: 27px; }
+  .focus-progress { font-size: 10px; }
+}
+@media (max-width: 700px) {
+  .focus-panel { margin-bottom: 18px; }
+  .focus-panel .panel-heading { flex-wrap: wrap; gap: 9px; }
+  .focus-items { grid-template-columns: 1fr; padding: 0 15px 13px; gap: 8px; }
+  .focus-items .task-row { min-height: 76px; flex-wrap: nowrap; padding: 11px; }
+  .focus-items .task-info { flex-basis: auto; }
+  .focus-items .task-info strong { font-size: 12px; }
+  .focus-empty { min-height: 49px; justify-content: flex-start; padding: 9px 12px; font-size: 11px; }
+  .focus-footer { flex-direction: column; align-items: flex-start; padding: 11px 15px; gap: 8px; }
+  .focus-footer > span { font-size: 10px; }
+  .task-list { padding-inline: 15px; }
+  .task-row { padding-block: 12px; gap: 7px; }
+  .task-info strong { font-size: 12px; }
+  .task-info small { font-size: 9px; column-gap: 4px; }
+  .task-info small .priority { font-size: 8px; padding: 1px 4px; }
+  .task-actions { gap: 0; max-width: 64px; flex-wrap: wrap; justify-content: flex-end; }
+  .task-actions .icon-button { width: 30px; min-width: 30px; height: 30px; }
+  .focus-items .task-actions { flex-wrap: nowrap; max-width: none; }
+  .week-controls { justify-content: flex-start; }
+  .week-controls > span { flex-basis: 100%; }
+  .calendar-view-toggle { margin-right: auto; }
+  .calendar-view-toggle button { font-size: 10px; padding: 6px 9px; }
+  .calendar-agenda { padding: 0 14px; }
+  .agenda-day { gap: 12px; padding: 16px 0; }
+  .agenda-date { width: 49px; }
+  .agenda-date > strong { font-size: 23px; }
+  .agenda-date > span { font-size: 9px; }
+  .agenda-events { grid-template-columns: 1fr; }
+  .agenda-event { padding: 12px; }
+  .agenda-event strong { font-size: 12px; }
+  .agenda-time { font-size: 10px; }
+  .deadline-groups { padding-inline: 15px; }
+  .deadline-group-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .deadline-group-heading > small { font-size: 9px; }
+  .deadline-summary-title strong { font-size: 12px; }
+  .deadline-summary-title small { font-size: 9px; }
+  .deadline-summary-row .dday { font-size: 9px; }
+  .deadline-panel > .panel-heading { flex-wrap: wrap; }
+  .full-panel > .panel-heading { flex-wrap: wrap; }
+  .connection-banner > div:not(.connection-actions) { min-width: 0; flex-basis: calc(100% - 55px); }
+  .connection-banner .connection-actions { flex-basis: 100%; min-width: 0; }
+  .connection-banner strong { font-size: 11px; }
+  .connection-banner p { font-size: 10px; }
+  .connection-banner .connection-actions .light-button { margin-left: 0; }
+}
