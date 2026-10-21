@@ -34,8 +34,13 @@ async function newPage(seed) {
     await page.route(`${origin}/**`, async route => {
       try {
         const url = route.request().url();
-        const body = execFileSync('curl', ['--fail', '--silent', '--show-error', '--location', '--max-time', '25', url], { maxBuffer: 5 * 1024 * 1024 });
-        await route.fulfill({ contentType: /\.js(?:\?|$)/.test(url) ? 'text/javascript' : /\.css(?:\?|$)/.test(url) ? 'text/css' : 'text/html', body });
+        const result = execFileSync('curl', ['--silent', '--show-error', '--location', '--max-time', '25', '--write-out', '\n%{http_code}', url], { maxBuffer: 5 * 1024 * 1024 });
+        const boundary = result.lastIndexOf(10);
+        const status = Number(result.subarray(boundary + 1).toString());
+        const body = result.subarray(0, boundary);
+        // Preserve HTTP errors: /auth/session returns 404 on static GitHub Pages.
+        // Turning that into a network failure incorrectly blocks browser login.
+        await route.fulfill({ status, contentType: /\.js(?:\?|$)/.test(url) ? 'text/javascript' : /\.css(?:\?|$)/.test(url) ? 'text/css' : 'text/html', body });
       } catch { await route.abort(); }
     });
   }
