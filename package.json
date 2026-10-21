@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test src/domain.test.js",
+    "test": "node --test src/domain.test.js src/google.test.js",
     "test:browser": "node tests/browser.mjs"
   },
   "dependencies": {

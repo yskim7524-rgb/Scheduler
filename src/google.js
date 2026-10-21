@@ -16,16 +16,59 @@ export function loadGoogleIdentity() {
   return scriptPromise;
 }
 
-export function requestAccess(clientId) {
+export const TASKS_SCOPE = 'https://www.googleapis.com/auth/tasks.readonly';
+
+export function requestAccess(clientId, includeTasks = false) {
   return new Promise((resolve, reject) => {
     const client = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
-      scope: 'https://www.googleapis.com/auth/calendar.readonly',
+      scope: ['https://www.googleapis.com/auth/calendar.readonly', ...(includeTasks ? [TASKS_SCOPE] : [])].join(' '),
+      include_granted_scopes: true,
       callback: result => result.error ? reject(new Error('Google Calendar 접근이 허용되지 않았습니다. 다시 연결해 주세요.')) : resolve(result),
       error_callback: () => reject(new Error('로그인 창이 닫혔거나 차단되었습니다. 다시 연결해 주세요.')),
     });
     client.requestAccessToken({ prompt: 'consent' });
   });
+}
+
+export async function fetchGoogleTasks(token, signal) {
+  async function pages(path, params = {}) {
+    const items = [];
+    let pageToken;
+    do {
+      const query = new URLSearchParams({ maxResults: '100', ...params });
+      if (pageToken) query.set('pageToken', pageToken);
+      const response = await fetch(`https://tasks.googleapis.com/tasks/v1/${path}?${query}`, {
+        headers: { Authorization: `Bearer ${token}` }, signal,
+      });
+      if (!response.ok) {
+        const error = new Error(response.status === 401 ? 'Google 연결이 만료되었습니다. 다시 연결해 주세요.' : response.status === 403 ? 'Google Tasks를 불러오지 못했습니다. Google Cloud에서 Google Tasks API를 활성화하고, 할 일 읽기 권한을 허용해 주세요.' : `Google Tasks 조회 실패 (${response.status}). 다시 불러와 주세요.`);
+        error.status = response.status;
+        throw error;
+      }
+      const data = await response.json();
+      items.push(...(data.items || []));
+      pageToken = data.nextPageToken;
+    } while (pageToken);
+    return items;
+  }
+  const lists = await pages('users/@me/lists');
+  const tasks = [];
+  // Bound concurrency while still reading every list and every response page.
+  for (let offset = 0; offset < lists.length; offset += 4) {
+    const batches = await Promise.all(lists.slice(offset, offset + 4).map(async list => {
+      const items = await pages(`lists/${encodeURIComponent(list.id)}/tasks`, { showCompleted: 'true', showHidden: 'true', showAssigned: 'true', showDeleted: 'false' });
+      return items.filter(task => !task.deleted).map(task => ({
+        id: `${list.id}:${task.id}`, title: task.title || '(제목 없음)',
+        listId: list.id, listTitle: list.title || '(목록 이름 없음)',
+        done: task.status === 'completed',
+        due: task.due && /^\d{4}-\d{2}-\d{2}T/.test(task.due) ? task.due.slice(0, 10) : null,
+        notes: task.notes || '', parent: Boolean(task.parent),
+      }));
+    }));
+    tasks.push(...batches.flat());
+  }
+  return { lists, tasks };
 }
 
 export async function fetchCalendarEvents(token, from, until, signal) {

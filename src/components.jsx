@@ -35,7 +35,7 @@ export function FocusPanel({ tasks, todayKey, notice, onChoose, onToggle, onEdit
   return <section className="panel focus-panel" aria-label="오늘 집중할 일">
     <div className="panel-heading"><div className="section-title"><Target size={20}/><h2>오늘 집중할 일</h2><span className="count-badge">{focused.length}/3</span></div><span className="focus-progress">{focused.length ? `${completed}개 완료 · ${focused.length - completed}개 남음` : '가장 중요한 세 가지만'}</span></div>
     <div className="focus-items">{focused.map(task => <TaskRow key={task.id} task={task} todayKey={todayKey} onToggle={onToggle} onEdit={onEdit} onPin={onPin}/>)}{Array.from({ length: 3 - focused.length }, (_, index) => <button className="focus-empty" key={index} onClick={onChoose}><span>{focused.length + index + 1}</span><Plus size={15}/>{focused.length + index === 0 ? '오늘 집중할 일을 선택해 보세요' : '중요한 일 하나 더 선택하기'}</button>)}</div>
-    <div className="focus-footer"><span role="status">{notice || '할 일 옆의 핀을 눌러 선택하세요. 매일 새롭게 3개까지 정할 수 있어요.'}</span><button className="text-button" onClick={onChoose}><ListTodo size={13}/>할 일에서 선택</button></div>
+    <div className="focus-footer"><span role="status">{notice || '브라우저 할 일 옆의 핀을 눌러 선택하세요. 매일 새롭게 3개까지 정할 수 있어요.'}</span><button className="text-button" onClick={onChoose}><ListTodo size={13}/>할 일에서 선택</button></div>
   </section>;
 }
 
@@ -45,7 +45,7 @@ export function CalendarAgenda({ events, start, todayKey, loading, failed, perso
       const date = addDays(start, index); const key = dateKey(date); const dayEvents = eventsForDay(events, key);
       return <section className={`agenda-day ${key === todayKey ? 'agenda-today' : ''}`} key={key}>
         <div className="agenda-date"><strong>{date.getDate()}</strong><span>{date.getMonth() + 1}월 · {date.toLocaleDateString('ko-KR', { weekday: 'short' })}</span>{key === todayKey && <small>오늘</small>}</div>
-        <div className="agenda-events">{loading ? <p className="agenda-empty">불러오는 중…</p> : failed ? <p className="agenda-empty">일정 조회 실패 · 위에서 다시 불러오세요</p> : personalDisconnected ? <p className="agenda-empty">Google Calendar 연결이 필요해요</p> : dayEvents.length ? dayEvents.map(event => <button className={`agenda-event ${event.category}`} key={event.id} onClick={() => onSelect(event)}><span className="agenda-time"><Clock3 size={12}/>{event.allDay ? '종일' : `${formatTime(event.start)} – ${formatTime(event.end)}`}</span><strong>{event.title}</strong>{event.location && <small><MapPin size={11}/>{event.location}</small>}</button>) : <p className="agenda-empty">등록된 일정이 없어요</p>}</div>
+        <div className="agenda-events">{loading ? <p className="agenda-empty">불러오는 중…</p> : failed ? <p className="agenda-empty">일정 조회 실패 · 위에서 다시 불러오세요</p> : personalDisconnected ? <p className="agenda-empty">Google Calendar 연결이 필요해요</p> : dayEvents.length ? dayEvents.map(event => <button className={`agenda-event ${event.category}`} key={event.id} onClick={() => onSelect(event)}><span className="agenda-time"><Clock3 size={12}/>{event.isGoogleTask ? '할 일 · 마감일' : event.allDay ? '종일' : `${formatTime(event.start)} – ${formatTime(event.end)}`}</span><strong>{event.title}</strong>{event.location && <small><MapPin size={11}/>{event.location}</small>}</button>) : <p className="agenda-empty">등록된 일정이 없어요</p>}</div>
       </section>;
     })}
   </div>;

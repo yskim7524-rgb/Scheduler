@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowUpRight, CalendarDays, CheckCheck, ChevronLeft, ChevronRight, ExternalLink, Flag, LayoutDashboard, Link2, List, ListTodo, LoaderCircle, MapPin, MoreHorizontal, Plus, RefreshCw, Settings2, Sparkles, Unplug, X } from 'lucide-react';
-import { addDays, dateKey, dayDifference, demoEvents, demoTasks, eventsForDay, groupDeadlines, PRIORITY, toggleDailyFocus, weekStart } from './domain.js';
-import { fetchCalendarEvents, loadGoogleIdentity, requestAccess } from './google.js';
+import { addDays, dateKey, dayDifference, demoEvents, demoTasks, eventsForDay, groupDeadlines, PRIORITY, taskDeadlineEvents, toggleDailyFocus, weekStart } from './domain.js';
+import { fetchCalendarEvents, fetchGoogleTasks, loadGoogleIdentity, requestAccess, TASKS_SCOPE } from './google.js';
+import GoogleTasksPanel from './GoogleTasksPanel.jsx';
 import { CalendarAgenda, DeadlineGroups, FocusPanel, TaskForm, TaskRow } from './components.jsx';
 import './styles.css';
 import './improvements.css';
+import './google-tasks.css';
 
 const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
 const formatTime = value => new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -67,17 +69,27 @@ function App() {
   const [refresh, setRefresh] = useState(0);
   const [lastSync, setLastSync] = useState(null);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [wantGoogleTasks, setWantGoogleTasks] = useState(false);
+  const [googleTaskData, setGoogleTaskData] = useState({ lists: [], tasks: [] });
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksError, setTasksError] = useState('');
+  const [tasksPermissionError, setTasksPermissionError] = useState('');
+  const [tasksLastSync, setTasksLastSync] = useState(null);
   const todayKey = dateKey(today);
   const start = addDays(weekStart(today), offset * 7);
   const end = addDays(start, 6);
   const nextStart = addDays(start, 7);
   const isSample = !token && calendarMode === 'sample';
   const personalDisconnected = !token && !isSample;
-  const events = token ? googleEvents : isSample ? demoEvents(today) : [];
+  const calendarEvents = token ? googleEvents : isSample ? demoEvents(today) : [];
+  const events = [...calendarEvents, ...(token?.hasTasks ? taskDeadlineEvents(googleTaskData.tasks) : [])];
   const weekEvents = events.filter(event => Array.from({ length: 7 }, (_, i) => dateKey(addDays(start, i))).some(key => eventsForDay([event], key).length));
   const nextEvents = events.filter(event => Array.from({ length: 7 }, (_, i) => dateKey(addDays(nextStart, i))).some(key => eventsForDay([event], key).length));
   const openTasks = tasks.filter(t => !t.done);
-  const completed = tasks.length - openTasks.length;
+  const remoteTasks = token?.hasTasks ? googleTaskData.tasks : [];
+  const remoteOpenCount = remoteTasks.filter(task => !task.done).length;
+  const totalOpenCount = openTasks.length + remoteOpenCount;
+  const completed = tasks.length - openTasks.length + remoteTasks.filter(task => task.done).length;
   const deadlines = [...openTasks].sort((a, b) => a.due.localeCompare(b.due));
   const deadlineGroups = groupDeadlines(tasks, todayKey);
   const urgent = openTasks.filter(t => dayDifference(t.due, todayKey) <= 3).length;
@@ -125,17 +137,39 @@ function App() {
     return () => controller.abort();
   }, [token, offset, todayKey, refresh]);
 
-  async function connect() {
+  useEffect(() => {
+    if (!token?.hasTasks) { setGoogleTaskData({ lists: [], tasks: [] }); setTasksLoading(false); setTasksError(''); setTasksLastSync(null); return; }
+    const controller = new AbortController();
+    setTasksLoading(true); setTasksError('');
+    fetchGoogleTasks(token.value, controller.signal)
+      .then(data => { if (!controller.signal.aborted) { setGoogleTaskData(data); setTasksLastSync(new Date()); } })
+      .catch(e => {
+        if (controller.signal.aborted) return;
+        setTasksError(e.message);
+        if (e.status === 401) { setToken(null); setCalendarMode('personal'); setError(e.message); }
+      })
+      .finally(() => { if (!controller.signal.aborted) setTasksLoading(false); });
+    return () => controller.abort();
+  }, [token, refresh]);
+
+  async function connect(withTasks = false) {
+    if (withTasks === true) setWantGoogleTasks(true);
     setCalendarMode('personal');
     if (!clientId.trim()) { setModal('settings'); return; }
     setConnecting(true);
     setError('');
+    setTasksPermissionError('');
     try {
       await loadGoogleIdentity();
-      const result = await requestAccess(clientId.trim());
+      const requestingTasks = withTasks === true || wantGoogleTasks || Boolean(token?.hasTasks);
+      const result = await requestAccess(clientId.trim(), requestingTasks);
       setSyncFailed(false);
       setLastSync(null);
-      setToken({ value: result.access_token, expires: Date.now() + Number(result.expires_in || 3600) * 1000 });
+      const hasTasks = (result.scope || '').split(' ').includes(TASKS_SCOPE);
+      setWantGoogleTasks(hasTasks);
+      if (requestingTasks && !hasTasks) setTasksPermissionError('Google Tasks 읽기 권한이 허용되지 않았습니다. Google Tasks 연결을 다시 눌러 할 일 읽기 권한을 선택해 주세요.');
+      setToken({ value: result.access_token, expires: Date.now() + Number(result.expires_in || 3600) * 1000, hasTasks });
+      setGoogleTaskData({ lists: [], tasks: [] });
       setModal(null);
     } catch (e) { setError(e.message); }
     finally { setConnecting(false); }
@@ -179,7 +213,7 @@ function App() {
       <nav aria-label="주 메뉴">
         <button className={view === 'dashboard' ? 'nav-link active' : 'nav-link'} onClick={() => openView('dashboard')}><LayoutDashboard size={19}/>대시보드<span className="nav-dot"/></button>
         <button className={view === 'next' ? 'nav-link active' : 'nav-link'} onClick={() => openView('next')}><CalendarDays size={19}/>다음 주 일정</button>
-        <button className={view === 'tasks' ? 'nav-link active' : 'nav-link'} onClick={() => openView('tasks')}><ListTodo size={19}/>해야 할 일<span className="nav-count">{openTasks.length}</span></button>
+        <button className={view === 'tasks' ? 'nav-link active' : 'nav-link'} onClick={() => openView('tasks')}><ListTodo size={19}/>해야 할 일<span className="nav-count">{totalOpenCount}</span></button>
         <button className={view === 'deadlines' ? 'nav-link active' : 'nav-link'} onClick={() => openView('deadlines')}><Flag size={19}/>마감 모아보기{urgent > 0 && <span className="nav-count urgent">{urgent}</span>}</button>
       </nav>
       <div className="sidebar-separator"/>
@@ -198,34 +232,35 @@ function App() {
         <section className={`connection-banner ${personalDisconnected || syncFailed ? 'connection-attention' : ''}`} aria-label="캘린더 연결 상태"><span className="google-tile"><GoogleMark/></span><div><strong>{connectionTitle}</strong><p>{connectionDescription}</p></div><div className="connection-actions">{!token && !isSample && <button className="text-button" onClick={() => { setCalendarMode('sample'); setSyncFailed(false); setError(''); }}>샘플 보기</button>}<button className="light-button" onClick={token ? () => setRefresh(n => n + 1) : connect} disabled={loading || connecting}>{loading || connecting ? <LoaderCircle className="spin" size={16}/> : token ? <RefreshCw size={15}/> : <Link2 size={15}/>} {token ? '새로고침' : clientId && !isSample ? '다시 연결' : '캘린더 연결'}<ArrowUpRight size={15}/></button></div></section>
 
         <section className="stats-grid" aria-label="주간 요약">
-          {[{ label: offset === 0 ? '이번 주 일정' : '선택한 주 일정', value: weekEvents.length, unit: '개', icon: CalendarDays, tone: 'mint', note: token ? 'Google 기본 캘린더' : isSample ? '샘플 캘린더' : 'Google 연결 필요', sub: '한 주의 약속을 확인하세요' }, { label: '남은 할 일', value: openTasks.length, unit: '개', icon: ListTodo, tone: 'blue', note: `전체 ${tasks.length}개 중`, sub: '하나씩 가볍게 지워봐요' }, { label: '다가오는 마감', value: urgent, unit: '개', icon: Flag, tone: 'peach', note: '3일 이내 · 지연 포함', sub: '조금만 더 힘내볼까요?' }, { label: '완료한 할 일', value: completed, unit: '개', icon: CheckCheck, tone: 'purple', note: '잘하고 있어요!', sub: '작은 성취가 쌓이고 있어요' }].map(({ label, value, unit, icon: Icon, tone, note, sub }) => <article className="stat-card" key={label}><div className="stat-top"><span>{label}</span><span className={`stat-icon ${tone}`}><Icon size={18}/></span></div><div className="stat-value">{value}<span>{unit}</span><small>{note}</small></div><p>{sub}</p></article>)}
+          {[{ label: offset === 0 ? '이번 주 일정' : '선택한 주 일정', value: weekEvents.length, unit: '개', icon: CalendarDays, tone: 'mint', note: token ? token.hasTasks ? 'Google 일정·할 일' : 'Google 기본 캘린더' : isSample ? '샘플 캘린더' : 'Google 연결 필요', sub: '한 주의 약속을 확인하세요' }, { label: '남은 할 일', value: totalOpenCount, unit: '개', icon: ListTodo, tone: 'blue', note: token?.hasTasks ? `Google ${remoteOpenCount} · 브라우저 ${openTasks.length}` : `브라우저 전체 ${tasks.length}개 중`, sub: '하나씩 가볍게 지워봐요' }, { label: '브라우저 마감', value: urgent, unit: '개', icon: Flag, tone: 'peach', note: '3일 이내 · 지연 포함', sub: '조금만 더 힘내볼까요?' }, { label: '완료한 할 일', value: completed, unit: '개', icon: CheckCheck, tone: 'purple', note: '잘하고 있어요!', sub: '작은 성취가 쌓이고 있어요' }].map(({ label, value, unit, icon: Icon, tone, note, sub }) => <article className="stat-card" key={label}><div className="stat-top"><span>{label}</span><span className={`stat-icon ${tone}`}><Icon size={18}/></span></div><div className="stat-value">{value}<span>{unit}</span><small>{note}</small></div><p>{sub}</p></article>)}
         </section>
 
+        {(view === 'dashboard' || view === 'tasks') && <GoogleTasksPanel token={token} lists={googleTaskData.lists} tasks={googleTaskData.tasks} loading={tasksLoading} error={tasksError || tasksPermissionError} lastSync={tasksLastSync} todayKey={todayKey} connecting={connecting} onConnect={() => connect(true)} onRefresh={() => setRefresh(n => n + 1)}/>}
         {(view === 'dashboard' || view === 'tasks') && <FocusPanel tasks={tasks} todayKey={todayKey} notice={focusNotice} onChoose={() => { openView('tasks'); setShowCompleted(false); }} onToggle={toggleTask} onEdit={openTask} onPin={pinTask}/>}
 
         {(view === 'dashboard' || view === 'next') && <>
           <section className={`panel calendar-panel layout-${effectiveLayout}`}><div className="panel-heading"><div className="section-title"><CalendarDays size={19}/><h2>{offset === 0 ? '이번 주 일정' : offset === 1 ? '다음 주 일정' : '주간 일정'}</h2><span className="count-badge">{weekEvents.length}</span></div><div className="week-controls"><span>{start.getFullYear()}. {start.getMonth() + 1}. {start.getDate()} – {end.getMonth() + 1}. {end.getDate()}</span><div className="calendar-view-toggle" aria-label="일정 보기 방식"><button aria-label="주간 표 보기" aria-pressed={effectiveLayout === 'week'} onClick={() => setCalendarLayout('week')}><CalendarDays size={14}/><span>주간</span></button><button aria-label="일정 목록 보기" aria-pressed={effectiveLayout === 'list'} onClick={() => setCalendarLayout('list')}><List size={14}/><span>목록</span></button></div><button className="today-button" onClick={() => setOffset(0)}>이번 주</button><button className="icon-button" aria-label="이전 주" onClick={() => setOffset(n => n - 1)}><ChevronLeft size={18}/></button><button className="icon-button" aria-label="다음 주" onClick={() => setOffset(n => n + 1)}><ChevronRight size={18}/></button></div></div>
             <div className="calendar-scroll"><div className="week-grid">{DAYS.map((day, i) => {
               const date = addDays(start, i); const key = dateKey(date); const dayEvents = eventsForDay(events, key); const isToday = key === todayKey;
-              return <div className={`day-column ${isToday ? 'is-today' : ''} ${i > 4 ? 'weekend' : ''}`} key={day}><div className="day-heading"><span>{day}{isToday && <small>TODAY</small>}</span><strong className={isToday ? 'today-number' : ''}>{date.getDate()}</strong></div><div className="day-events">{loading ? <span className="loading-day">불러오는 중…</span> : syncFailed ? <span className="empty-day">일정 조회 실패</span> : personalDisconnected ? <span className="empty-day">캘린더 연결 필요</span> : dayEvents.length ? dayEvents.map(event => <button className={`event-card ${event.category}`} key={event.id} onClick={() => showEvent(event)}><span className="event-time">{event.allDay ? '종일' : formatTime(event.start)}</span><strong>{event.title}</strong>{event.location && <span className="event-location"><MapPin size={10}/>{event.location}</span>}</button>) : <span className="empty-day">여유로운 하루</span>}</div></div>;
+              return <div className={`day-column ${isToday ? 'is-today' : ''} ${i > 4 ? 'weekend' : ''}`} key={day}><div className="day-heading"><span>{day}{isToday && <small>TODAY</small>}</span><strong className={isToday ? 'today-number' : ''}>{date.getDate()}</strong></div><div className="day-events">{loading ? <span className="loading-day">불러오는 중…</span> : syncFailed ? <span className="empty-day">일정 조회 실패</span> : personalDisconnected ? <span className="empty-day">캘린더 연결 필요</span> : dayEvents.length ? dayEvents.map(event => <button className={`event-card ${event.category}`} key={event.id} onClick={() => showEvent(event)}><span className="event-time">{event.isGoogleTask ? '할 일 · 마감일' : event.allDay ? '종일' : formatTime(event.start)}</span><strong>{event.title}</strong>{event.location && <span className="event-location"><MapPin size={10}/>{event.location}</span>}</button>) : <span className="empty-day">여유로운 하루</span>}</div></div>;
             })}</div></div><CalendarAgenda events={events} start={start} todayKey={todayKey} loading={loading} failed={syncFailed} personalDisconnected={personalDisconnected} onSelect={showEvent}/><div className="calendar-footer"><span><i className="legend-dot mint-dot"/>{token ? 'Google 일정' : isSample ? '업무 일정' : '내 캘린더'}{isSample && <><i className="legend-dot purple-dot"/>개인 일정<i className="legend-dot blue-dot"/>집중 시간</>}</span><small>{token ? '시간은 기기의 현지 시간 기준으로 표시됩니다' : isSample ? '샘플 데이터 · Google 연결 시 실제 일정으로 전환' : 'Google 연결 후 내 일정이 표시됩니다'}</small></div>
           </section>
           <div className="lower-grid">
-            <section className="panel task-panel"><div className="panel-heading"><div className="section-title"><ListTodo size={19}/><h2>해야 할 일</h2><span className="count-badge">{openTasks.length}</span></div><button className="text-button" onClick={() => openView('tasks')}>전체 보기<ChevronRight size={15}/></button></div><div className="task-tabs">{[['all', '전체'], ['open', '진행 중'], ['done', '완료']].map(([key, label]) => <button key={key} className={taskFilter === key ? 'selected' : ''} onClick={() => setTaskFilter(key)}>{label}</button>)}</div><div className="task-list">{visibleTasks.slice(0, 4).map(task => <TaskRow key={task.id} task={task} onToggle={toggleTask} onEdit={openTask} onPin={pinTask} onPostpone={postponeTask} todayKey={todayKey}/>)}{!visibleTasks.length && <div className="empty-state"><CheckCheck size={26}/><p>표시할 할 일이 없어요.</p></div>}</div><button className="add-task-line" onClick={() => openTask()}><Plus size={16}/>새로운 할 일 추가하기</button></section>
+            <section className="panel task-panel"><div className="panel-heading"><div className="section-title"><ListTodo size={19}/><h2>브라우저 할 일</h2><span className="count-badge">{openTasks.length}</span></div><button className="text-button" onClick={() => openView('tasks')}>전체 보기<ChevronRight size={15}/></button></div><div className="task-tabs">{[['all', '전체'], ['open', '진행 중'], ['done', '완료']].map(([key, label]) => <button key={key} className={taskFilter === key ? 'selected' : ''} onClick={() => setTaskFilter(key)}>{label}</button>)}</div><div className="task-list">{visibleTasks.slice(0, 4).map(task => <TaskRow key={task.id} task={task} onToggle={toggleTask} onEdit={openTask} onPin={pinTask} onPostpone={postponeTask} todayKey={todayKey}/>)}{!visibleTasks.length && <div className="empty-state"><CheckCheck size={26}/><p>표시할 할 일이 없어요.</p></div>}</div><button className="add-task-line" onClick={() => openTask()}><Plus size={16}/>새로운 할 일 추가하기</button></section>
             <section className="panel deadline-panel"><div className="panel-heading"><div className="section-title"><Flag size={18}/><h2>마감 한눈에 보기</h2></div><span className="muted-small">오늘과 지난 마감을 구분해요</span></div><DeadlineGroups groups={deadlineGroups} todayKey={todayKey} compact onEdit={openTask}/>{!deadlines.length && <div className="empty-state"><Sparkles size={26}/><p>남은 마감이 없어요. 잘했어요!</p></div>}<button className="deadline-more" onClick={() => openView('deadlines')}>모든 마감 보기<ArrowUpRight size={14}/></button></section>
           </div>
           <section className="next-week-strip"><span className="next-week-icon"><CalendarDays size={20}/></span><div><strong>다음 주, 미리 살펴볼까요?</strong><p>{shortDate(nextStart)} – {shortDate(addDays(nextStart, 6))} <span>·</span> {nextEvents.length}개의 일정이 기다리고 있어요</p></div><div className="next-previews">{nextEvents.slice(0, 2).map(event => <button key={event.id} onClick={() => showEvent(event)}><span className="legend-dot mint-dot"/>{event.title}</button>)}</div><button className="icon-button next-arrow" aria-label="선택한 주의 다음 주 보기" onClick={() => setOffset(n => n + 1)}><ChevronRight size={20}/></button></section>
         </>}
 
-        {view === 'tasks' && <section className="panel full-panel"><div className="panel-heading"><div className="section-title"><ListTodo size={19}/><h2>나의 할 일</h2></div><label className="completed-toggle"><input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)}/>완료한 항목 보기</label></div><div className="task-list">{tasks.filter(task => showCompleted || !task.done).map(task => <TaskRow key={task.id} task={task} onToggle={toggleTask} onEdit={openTask} onPin={pinTask} onPostpone={postponeTask} onDelete={id => setTasks(previous => previous.filter(t => t.id !== id))} todayKey={todayKey}/>)}{!tasks.some(task => showCompleted || !task.done) && <div className="empty-state"><CheckCheck size={32}/><p>할 일을 모두 마쳤어요. 새로운 계획을 추가해 보세요.</p></div>}</div><button className="add-task-line" onClick={() => openTask()}><Plus size={17}/>새로운 할 일 추가하기</button></section>}
+        {view === 'tasks' && <section className="panel full-panel"><div className="panel-heading"><div className="section-title"><ListTodo size={19}/><h2>이 브라우저의 할 일</h2></div><label className="completed-toggle"><input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)}/>완료한 항목 보기</label></div><div className="task-list">{tasks.filter(task => showCompleted || !task.done).map(task => <TaskRow key={task.id} task={task} onToggle={toggleTask} onEdit={openTask} onPin={pinTask} onPostpone={postponeTask} onDelete={id => setTasks(previous => previous.filter(t => t.id !== id))} todayKey={todayKey}/>)}{!tasks.some(task => showCompleted || !task.done) && <div className="empty-state"><CheckCheck size={32}/><p>할 일을 모두 마쳤어요. 새로운 계획을 추가해 보세요.</p></div>}</div><button className="add-task-line" onClick={() => openTask()}><Plus size={17}/>새로운 할 일 추가하기</button></section>}
         {view === 'deadlines' && <section className="panel full-panel"><div className="panel-heading"><div className="section-title"><Flag size={19}/><h2>오늘 · 지난 마감 · 다가오는 마감</h2><span className="count-badge">{deadlines.length}</span></div><span className="muted-small">완료하지 않은 할 일</span></div><DeadlineGroups groups={deadlineGroups} todayKey={todayKey} onToggle={toggleTask} onEdit={openTask} onPin={pinTask} onPostpone={postponeTask}/>{!deadlines.length && <div className="empty-state"><Sparkles size={32}/><p>남은 마감이 없어요.</p></div>}{focusNotice && <p className="focus-notice" role="status">{focusNotice}</p>}</section>}
         <footer className="page-footer"><span>차근차근, 나만의 속도로.</span><span>weekflow <span>✳</span> a little clarity for your week</span></footer>
       </div>
     </main>
 
     {modal === 'task' && <Modal title={editingTask ? '할 일 수정' : '새로운 할 일'} onClose={() => { setModal(null); setEditingTask(null); }}><TaskForm key={editingTask?.id || 'new'} task={editingTask} todayKey={todayKey} onSubmit={saveTask}/></Modal>}
-    {modal === 'settings' && <Modal title="Google Calendar 연결" onClose={() => setModal(null)}><div className="settings-body"><div className="settings-intro"><GoogleMark/><p>기본 캘린더의 이번 주와 다음 주 일정을 불러옵니다. 캘린더를 수정하지 않는 읽기 전용 연결입니다.</p></div><label>Google OAuth 클라이언트 ID<input value={clientId} onChange={e => setClientId(e.target.value)} placeholder="…apps.googleusercontent.com" autoComplete="off"/></label><p className="form-note">Google Cloud Console에서 Calendar API를 활성화하고 웹 애플리케이션 OAuth 클라이언트를 만드세요. 승인된 JavaScript 원본에 현재 앱의 주소를 등록하고, 테스트 모드에서는 내 Google 계정을 테스트 사용자로 추가하세요.</p><a className="docs-link" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Google Cloud Console 열기<ExternalLink size={13}/></a><div className="privacy-note"><Link2 size={16}/><p>클라이언트 ID는 공개 식별자입니다. 비밀번호나 클라이언트 보안 비밀번호를 입력하지 마세요. 접근 토큰은 메모리에만 유지되며 새로고침 후 다시 연결해야 합니다.</p></div>{error && <p className="inline-error" role="alert">{error}</p>}<div className="settings-actions">{token && <button className="light-button" onClick={disconnect}><Unplug size={15}/>연결 해제</button>}<button className="primary-button" disabled={connecting || !clientId.trim()} onClick={() => { try { localStorage.setItem('weekflow.google-client-id', clientId.trim()); } catch { setStorageError('클라이언트 ID를 저장하지 못했습니다.'); } connect(); }}>{connecting ? <LoaderCircle className="spin" size={16}/> : <GoogleMark/>}{connecting ? '연결 중…' : 'Google 계정으로 연결'}</button></div></div></Modal>}
-    {modal === 'event' && selectedEvent && <Modal title="일정 자세히 보기" onClose={() => setModal(null)}><div className="event-detail"><span className="detail-category">{token ? 'Google Calendar' : '샘플 일정'}</span><h3>{selectedEvent.title}</h3><p><CalendarDays size={17}/>{selectedEvent.allDay ? `${selectedEvent.start} ~ ${dateKey(addDays(new Date(`${selectedEvent.end}T00:00:00`), -1))} · 종일` : `${new Date(selectedEvent.start).toLocaleString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' })} – ${new Date(selectedEvent.end).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}</p>{selectedEvent.location && <p><MapPin size={17}/>{selectedEvent.location}</p>}{selectedEvent.description && <div className="event-description">{selectedEvent.description}</div>}{selectedEvent.link?.startsWith('https://') && <a className="primary-button" href={selectedEvent.link} target="_blank" rel="noreferrer">Google Calendar에서 보기<ExternalLink size={15}/></a>}</div></Modal>}
+    {modal === 'settings' && <Modal title="Google Calendar 연결" onClose={() => setModal(null)}><div className="settings-body"><div className="settings-intro"><GoogleMark/><p>{wantGoogleTasks ? '기본 캘린더와 Google Tasks의 모든 할 일 목록을 읽기 전용으로 불러옵니다.' : '기본 캘린더의 이번 주와 다음 주 일정을 읽기 전용으로 불러옵니다.'}</p></div><label>Google OAuth 클라이언트 ID<input value={clientId} onChange={e => setClientId(e.target.value)} placeholder="…apps.googleusercontent.com" autoComplete="off"/></label><p className="form-note">Google Cloud Console에서 Calendar API를 활성화하고 웹 애플리케이션 OAuth 클라이언트를 만드세요. 승인된 JavaScript 원본에 현재 앱의 주소를 등록하고, 테스트 모드에서는 내 Google 계정을 테스트 사용자로 추가하세요.</p><a className="docs-link" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Google Cloud Console 열기<ExternalLink size={13}/></a><label className="completed-toggle tasks-permission"><input type="checkbox" checked={wantGoogleTasks} onChange={event => setWantGoogleTasks(event.target.checked)}/>Google Tasks 할 일도 함께 연결</label><div className="privacy-note"><Link2 size={16}/><p>클라이언트 ID는 공개 식별자입니다. 비밀번호나 클라이언트 보안 비밀번호를 입력하지 마세요. 접근 토큰은 메모리에만 유지되며 새로고침 후 다시 연결해야 합니다.</p></div>{error && <p className="inline-error" role="alert">{error}</p>}<div className="settings-actions">{token && <button className="light-button" onClick={disconnect}><Unplug size={15}/>연결 해제</button>}<button className="primary-button" disabled={connecting || !clientId.trim()} onClick={() => { try { localStorage.setItem('weekflow.google-client-id', clientId.trim()); } catch { setStorageError('클라이언트 ID를 저장하지 못했습니다.'); } connect(); }}>{connecting ? <LoaderCircle className="spin" size={16}/> : <GoogleMark/>}{connecting ? '연결 중…' : 'Google 계정으로 연결'}</button></div></div></Modal>}
+    {modal === 'event' && selectedEvent && <Modal title="일정 자세히 보기" onClose={() => setModal(null)}><div className="event-detail"><span className="detail-category">{selectedEvent.isGoogleTask ? 'Google Tasks · 마감일 기준' : token ? 'Google Calendar' : '샘플 일정'}</span><h3>{selectedEvent.title}</h3><p><CalendarDays size={17}/>{selectedEvent.isGoogleTask ? `${selectedEvent.start} 마감` : selectedEvent.allDay ? `${selectedEvent.start} ~ ${dateKey(addDays(new Date(`${selectedEvent.end}T00:00:00`), -1))} · 종일` : `${new Date(selectedEvent.start).toLocaleString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' })} – ${new Date(selectedEvent.end).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}</p>{selectedEvent.location && <p><MapPin size={17}/>{selectedEvent.location}</p>}{selectedEvent.description && <div className="event-description">{selectedEvent.description}</div>}{selectedEvent.link?.startsWith('https://') && <a className="primary-button" href={selectedEvent.link} target="_blank" rel="noreferrer">{selectedEvent.isGoogleTask ? 'Google Tasks에서 보기' : 'Google Calendar에서 보기'}<ExternalLink size={15}/></a>}</div></Modal>}
   </div>;
 }
 

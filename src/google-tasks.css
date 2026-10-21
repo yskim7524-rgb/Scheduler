@@ -1,0 +1,44 @@
+.google-tasks-panel { margin-bottom: 24px; }
+.event-card.google-task, .agenda-event.google-task { background: #e7f5ec; border-left-color: #65b58a; color: #49845d; }
+.source-badge { display: inline-flex; align-items: center; padding: 3px 6px; border-radius: 4px; background: #eef4fa; color: #7894af; font-size: 9px; font-weight: 400; white-space: nowrap; }
+.google-tasks-actions { display: flex; align-items: center; gap: 18px; }
+.google-tasks-actions .text-button { font-size: 10px; color: #7c9472; }
+.google-tasks-link { display: inline-flex; align-items: center; gap: 5px; }
+.google-tasks-intro { padding: 0 21px 17px; color: #91a087; font-size: 11px; line-height: 1.9; }
+.google-tasks-intro p { margin: 0 0 4px; }
+.google-tasks-intro strong { color: #738f65; font-weight: 500; }
+.google-tasks-filters { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 0 21px 16px; }
+.google-tasks-filters > label:first-child { display: flex; align-items: center; gap: 10px; font-size: 10px; color: #94a18a; }
+.google-tasks-filters select { width: auto; max-width: 300px; font-size: 11px; padding: 8px 10px; }
+.google-task-list { padding: 0 21px; }
+.google-task { display: flex; align-items: flex-start; gap: 12px; padding: 17px 0; border-top: 1px solid #edf1e9; }
+.google-task-status { color: #83ac83; padding-top: 2px; flex-shrink: 0; }
+.google-task > div { min-width: 0; flex: 1; }
+.google-task strong { font-size: 12px; font-weight: 500; line-height: 1.8; overflow-wrap: anywhere; }
+.google-task p { display: flex; gap: 8px; margin: 7px 0 0; font-size: 10px; color: #99a58f; flex-wrap: wrap; }
+.google-task .due-text { color: #b28a65; }
+.google-task-done strong { color: #a4af9c; text-decoration: line-through; }
+.google-task-done .google-task-status { color: #a1b795; }
+.google-task-child { margin-left: 27px; }
+.google-task details { margin-top: 9px; color: #8a9d7f; font-size: 10px; }
+.google-task details summary { cursor: pointer; }
+.google-task .google-task-notes { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.9; display: block; }
+.google-tasks-footer { border-top: 1px solid #edf1e9; padding: 12px 21px; display: flex; align-items: center; justify-content: space-between; gap: 15px; font-size: 10px; color: #9aa78e; line-height: 1.8; }
+.google-tasks-message { display: flex; align-items: center; gap: 8px; color: #94a489; font-size: 11px; padding: 12px 21px 20px; line-height: 1.9; }
+.google-tasks-error { padding: 0 21px 21px; font-size: 11px; color: #b1876e; line-height: 1.9; }
+.google-tasks-error > a { display: inline-flex; align-items: center; gap: 5px; margin-right: 18px; text-decoration: underline; }
+.tasks-permission { margin-top: 18px; }
+.tasks-permission input { width: auto; accent-color: #467353; }
+@media (max-width: 850px) {
+  .google-tasks-panel .panel-heading { align-items: flex-start; flex-direction: column; }
+  .google-tasks-actions { justify-content: space-between; width: 100%; }
+}
+@media (max-width: 700px) {
+  .google-tasks-panel { margin-bottom: 18px; }
+  .google-tasks-intro { padding: 0 15px 15px; font-size: 10px; }
+  .google-tasks-filters { padding-inline: 15px; align-items: flex-start; flex-direction: column; gap: 12px; }
+  .google-tasks-filters select { max-width: 250px; }
+  .google-task-list { padding-inline: 15px; }
+  .google-tasks-footer { flex-direction: column; align-items: flex-start; gap: 4px; padding-inline: 15px; }
+  .google-tasks-message, .google-tasks-error { padding-inline: 15px; }
+}

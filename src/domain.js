@@ -43,6 +43,15 @@ export function groupDeadlines(tasks, day) {
   return groups;
 }
 
+export function taskDeadlineEvents(tasks) {
+  return tasks.filter(task => !task.done && task.due).map(task => ({
+    id: `google-task:${task.id}`, title: task.title, start: task.due,
+    end: dateKey(addDays(new Date(`${task.due}T00:00:00`), 1)),
+    allDay: true, isGoogleTask: true, category: 'google-task',
+    location: task.listTitle, description: task.notes, link: 'https://tasks.google.com/',
+  }));
+}
+
 export function eventsForDay(events, key) {
   const start = new Date(`${key}T00:00:00`);
   const end = addDays(start, 1);
