@@ -47,7 +47,7 @@ test('deadline groups omit completed tasks and separate overdue, today and futur
 
 test('Google Tasks deadlines appear on the correct calendar day without shifting timezone or inventing times', () => {
   const events = taskDeadlineEvents([
-    { id: 'proposal', title: '감사제안서 작성', due: '2026-10-20', done: false, listTitle: '업무' },
+    { id: 'proposal', title: '샘플 업무 문서 작성', due: '2026-10-20', done: false, listTitle: '업무' },
     { id: 'undated', title: '날짜 없는 할 일', due: null, done: false },
     { id: 'done', title: '완료한 할 일', due: '2026-10-20', done: true },
   ]);
@@ -55,6 +55,6 @@ test('Google Tasks deadlines appear on the correct calendar day without shifting
   assert.equal(events[0].isGoogleTask, true);
   assert.equal(events[0].start, '2026-10-20');
   assert.equal(events[0].end, '2026-10-21');
-  assert.equal(eventsForDay(events, '2026-10-20')[0].title, '감사제안서 작성');
+  assert.equal(eventsForDay(events, '2026-10-20')[0].title, '샘플 업무 문서 작성');
   assert.equal(eventsForDay(events, '2026-10-21').length, 0);
 });
