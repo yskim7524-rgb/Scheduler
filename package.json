@@ -7,8 +7,13 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test src/domain.test.js src/google.test.js",
-    "test:browser": "node tests/browser.mjs"
+    "test": "node --test src/domain.test.js src/google.test.js src/task-backup.test.js server/worker.test.js",
+    "test:browser": "node tests/browser.mjs",
+    "test:server-browser": "node tests/server-browser.mjs",
+    "dev:cloudflare": "wrangler dev --local --port 8787",
+    "deploy:cloudflare": "npm run build && node scripts/deploy-cloudflare.mjs",
+    "db:local": "wrangler d1 migrations apply weekflow-auth --local",
+    "db:remote": "wrangler d1 migrations apply weekflow-auth --remote"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -18,6 +23,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
     "playwright": "^1.64.1",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "wrangler": "^4.151.3"
   }
 }

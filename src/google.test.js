@@ -1,6 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchGoogleTasks } from './google.js';
+import { fetchGoogleTasks, requestAccess, TASKS_SCOPE } from './google.js';
+
+test('reconnecting reuses Google consent instead of forcing repeated permission approval', async () => {
+  const previousWindow = globalThis.window;
+  let config;
+  let requestOptions;
+  globalThis.window = { google: { accounts: { oauth2: { initTokenClient(value) {
+    config = value;
+    return { requestAccessToken(options) {
+      requestOptions = options;
+      value.callback({ access_token: 'test-token', scope: value.scope, expires_in: 3600 });
+    } };
+  } } } } };
+  try {
+    const result = await requestAccess('public-test-client-id', true);
+    assert.equal(requestOptions.prompt, '');
+    assert.equal(config.include_granted_scopes, true);
+    assert.equal(config.scope.includes(TASKS_SCOPE), true);
+    assert.equal(result.expires_in, 3600);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
 
 test('Google Tasks reads all lists/pages and retains undated, completed and assigned tasks', async t => {
   const seen = [];

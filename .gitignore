@@ -4,3 +4,7 @@ dist/
 .env.local
 *.log
 .playwright/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.wrangler/

@@ -100,3 +100,7 @@
   .connection-banner p { font-size: 10px; }
   .connection-banner .connection-actions .light-button { margin-left: 0; }
 }
+.task-backup{margin-top:22px;padding-top:18px;border-top:1px solid #e3e9e1}
+.task-backup h3{margin:0;font-size:12px;font-weight:600}
+.task-backup>label{display:flex;flex-direction:column;gap:8px;margin-top:14px;font-size:11px;color:#6f826e}
+.task-backup input[type=file]{max-width:100%;font-size:11px}

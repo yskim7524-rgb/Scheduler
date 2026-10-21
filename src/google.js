@@ -1,4 +1,5 @@
 import { normalizeGoogleEvent } from './domain.js';
+import { serverGoogleFetch } from './server-auth.js';
 
 let scriptPromise;
 export function loadGoogleIdentity() {
@@ -27,7 +28,9 @@ export function requestAccess(clientId, includeTasks = false) {
       callback: result => result.error ? reject(new Error('Google Calendar 접근이 허용되지 않았습니다. 다시 연결해 주세요.')) : resolve(result),
       error_callback: () => reject(new Error('로그인 창이 닫혔거나 차단되었습니다. 다시 연결해 주세요.')),
     });
-    client.requestAccessToken({ prompt: 'consent' });
+    // Google will show consent when a permission is first requested or changed.
+    // Reconnecting must not force the same consent screen every time.
+    client.requestAccessToken({ prompt: '' });
   });
 }
 
@@ -38,7 +41,7 @@ export async function fetchGoogleTasks(token, signal) {
     do {
       const query = new URLSearchParams({ maxResults: '100', ...params });
       if (pageToken) query.set('pageToken', pageToken);
-      const response = await fetch(`https://tasks.googleapis.com/tasks/v1/${path}?${query}`, {
+      const response = token?.mode === 'server' ? await serverGoogleFetch(`/api/google/tasks/${path}?${query}`, signal) : await fetch(`https://tasks.googleapis.com/tasks/v1/${path}?${query}`, {
         headers: { Authorization: `Bearer ${token}` }, signal,
       });
       if (!response.ok) {
@@ -80,7 +83,7 @@ export async function fetchCalendarEvents(token, from, until, signal) {
       singleEvents: 'true', orderBy: 'startTime', maxResults: '250',
     });
     if (pageToken) params.set('pageToken', pageToken);
-    const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
+    const response = token?.mode === 'server' ? await serverGoogleFetch(`/api/google/calendar/events?${params}`, signal) : await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
       headers: { Authorization: `Bearer ${token}` }, signal,
     });
     if (response.status === 401) {

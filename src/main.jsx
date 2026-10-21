@@ -5,6 +5,8 @@ import { addDays, dateKey, dayDifference, demoEvents, demoTasks, eventsForDay, g
 import { fetchCalendarEvents, fetchGoogleTasks, loadGoogleIdentity, requestAccess, TASKS_SCOPE } from './google.js';
 import GoogleTasksPanel from './GoogleTasksPanel.jsx';
 import { CalendarAgenda, DeadlineGroups, TaskForm, TaskRow } from './components.jsx';
+import { logoutServer, readServerSession } from './server-auth.js';
+import { createTaskBackup, mergeTaskBackup, parseTaskBackup } from './task-backup.js';
 import './styles.css';
 import './improvements.css';
 import './google-tasks.css';
@@ -59,11 +61,14 @@ function App() {
   const [syncFailed, setSyncFailed] = useState(false);
   const [clientId, setClientId] = useState(storedClientId);
   const [token, setToken] = useState(null);
+  const [authMode, setAuthMode] = useState('checking');
+  const [serverInfo, setServerInfo] = useState(null);
   const [googleEvents, setGoogleEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
   const [storageError, setStorageError] = useState('');
+  const [backupMessage, setBackupMessage] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [lastSync, setLastSync] = useState(null);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -112,10 +117,31 @@ function App() {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (modal === 'settings' || clientId) loadGoogleIdentity().catch(() => {});
-  }, [modal, clientId]);
+    if (authMode === 'browser' && (modal === 'settings' || clientId)) loadGoogleIdentity().catch(() => {});
+  }, [modal, clientId, authMode]);
   useEffect(() => {
-    if (!token) return;
+    const controller = new AbortController();
+    readServerSession(controller.signal).then(info => {
+      if (controller.signal.aborted) return;
+      setAuthMode(info ? 'server' : 'browser');
+      setServerInfo(info);
+      if (info?.authenticated) {
+        setCalendarMode('personal');
+        setWantGoogleTasks(info.hasTasks);
+        setToken({ mode: 'server', expires: info.expiresAt, hasTasks: info.hasTasks });
+      }
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('auth_error')) {
+        const messages = { denied: 'Google 권한 허용이 취소되었습니다.', account_not_allowed: '이 Google 계정은 허용된 사용자 목록에 없습니다.', offline_access_required: '장기 연결 권한을 받지 못했습니다. 다시 연결해 주세요.', calendar_permission_required: '캘린더 읽기 권한을 허용해 주세요.', auth_not_configured: '인증 서버의 Google 연결 설정이 필요합니다.' };
+        setError(messages[params.get('auth_error')] || 'Google 로그인을 완료하지 못했습니다. 다시 연결해 주세요.');
+        params.delete('auth_error');
+        history.replaceState(null, '', `${window.location.pathname}${params.size ? `?${params}` : ''}${window.location.hash}`);
+      }
+    }).catch(e => { if (!controller.signal.aborted) { setAuthMode('unavailable'); setError(e.message); } });
+    return () => controller.abort();
+  }, []);
+  useEffect(() => {
+    if (!token || token.mode === 'server') return;
     const timer = setTimeout(() => { setToken(null); setGoogleEvents([]); setLoading(false); setCalendarMode('personal'); setError('Google 연결이 만료되었습니다. 다시 연결해 주세요.'); }, Math.max(0, token.expires - Date.now()));
     return () => clearTimeout(timer);
   }, [token]);
@@ -126,7 +152,7 @@ function App() {
     setError('');
     setSyncFailed(false);
     setGoogleEvents([]);
-    fetchCalendarEvents(token.value, start, addDays(start, 14), controller.signal)
+    fetchCalendarEvents(token.mode === 'server' ? token : token.value, start, addDays(start, 14), controller.signal)
       .then(result => { if (!controller.signal.aborted) { setGoogleEvents(result); setLastSync(new Date()); } })
       .catch(e => { if (!controller.signal.aborted && e.name !== 'AbortError') { setError(e.message); setSyncFailed(true); if (e.status === 401) { setToken(null); setLoading(false); setCalendarMode('personal'); } } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -137,7 +163,7 @@ function App() {
     if (!token?.hasTasks) { setGoogleTaskData({ lists: [], tasks: [] }); setTasksLoading(false); setTasksError(''); setTasksLastSync(null); return; }
     const controller = new AbortController();
     setTasksLoading(true); setTasksError('');
-    fetchGoogleTasks(token.value, controller.signal)
+    fetchGoogleTasks(token.mode === 'server' ? token : token.value, controller.signal)
       .then(data => { if (!controller.signal.aborted) { setGoogleTaskData(data); setTasksLastSync(new Date()); } })
       .catch(e => {
         if (controller.signal.aborted) return;
@@ -151,6 +177,14 @@ function App() {
   async function connect(withTasks = false) {
     if (withTasks === true) setWantGoogleTasks(true);
     setCalendarMode('personal');
+    if (authMode === 'checking') return;
+    if (authMode === 'unavailable') { window.location.reload(); return; }
+    if (authMode === 'server') {
+      if (!serverInfo?.configured) { setError('인증 서버 설정이 필요합니다. Cloudflare의 Google OAuth 및 세션 설정을 먼저 완료해 주세요.'); return; }
+      const tasks = withTasks === true || wantGoogleTasks || Boolean(token?.hasTasks);
+      window.location.assign(`/auth/google/start${tasks ? '?tasks=1' : ''}`);
+      return;
+    }
     if (!clientId.trim()) { setModal('settings'); return; }
     setConnecting(true);
     setError('');
@@ -170,8 +204,13 @@ function App() {
     } catch (e) { setError(e.message); }
     finally { setConnecting(false); }
   }
-  function disconnect() {
-    if (token) window.google?.accounts?.oauth2.revoke(token.value, () => {});
+  async function disconnect() {
+    if (authMode === 'server') {
+      try { await logoutServer(); } catch (e) { setError(e.message); return; }
+      setServerInfo(previous => ({ ...previous, authenticated: false, accountEmail: null }));
+    }
+    if (token && token.mode !== 'server') window.google?.accounts?.oauth2.revoke(token.value, () => {});
+    setSelectedEvent(null);
     setToken(null); setGoogleEvents([]); setLastSync(null); setError(''); setLoading(false); setSyncFailed(false); setCalendarMode('personal');
   }
   function openTask(task = null) { setEditingTask(task); setModal('task'); }
@@ -188,10 +227,30 @@ function App() {
   const postponeTask = id => setTasks(previous => previous.map(task => task.id === id ? { ...task, due: dateKey(addDays(today, 1)) } : task));
   function showEvent(event) { setSelectedEvent(event); setModal('event'); }
   function openView(nextView) { setView(nextView); if (nextView === 'next') setOffset(1); else if (nextView === 'dashboard') setOffset(0); }
+  const exportTasks = () => {
+    try {
+      const url = URL.createObjectURL(new Blob([createTaskBackup(tasks)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url; link.download = `weekflow-tasks-${todayKey}.json`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setBackupMessage('할 일 백업을 다운로드했습니다. 개인 내용이 포함되므로 안전하게 보관하세요.');
+    } catch (e) { setBackupMessage(e.message); }
+  };
+  const importTasks = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      if (file.size > 1024 * 1024) throw new Error('1MB 이하의 백업 파일을 선택해 주세요.');
+      const imported = parseTaskBackup(await file.text());
+      setTasks(current => mergeTaskBackup(current, imported));
+      setBackupMessage(`${imported.length}개의 할 일을 가져왔습니다.`);
+    } catch (e) { setBackupMessage(e.message); }
+  };
   const toggleTask = id => setTasks(previous => previous.map(task => task.id === id ? { ...task, done: !task.done } : task));
   const syncTime = lastSync?.toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-  const connectionTitle = connecting ? 'Google 계정에 연결하는 중이에요' : loading ? 'Google 일정을 불러오고 있어요' : token ? syncFailed ? '일정 갱신에 실패했어요' : 'Google Calendar와 연결되어 있어요' : isSample ? '샘플 일정으로 둘러보고 있어요' : clientId ? 'Google 다시 연결이 필요해요' : '내 일정으로 한 주를 시작하세요';
-  const connectionDescription = token ? `${syncTime ? `마지막 정상 갱신 ${syncTime} · ` : ''}기본 캘린더 · 읽기 전용${syncFailed ? ' · 다시 불러오기를 눌러 주세요.' : ` · 연결 유효 ${formatTime(token.expires)}까지`}` : isSample ? '실제 일정이 아닌 예시입니다. Google Calendar를 연결하면 내 일정으로 전환돼요.' : '새로고침 또는 연결 만료 후에는 다시 연결해 주세요. 실제 일정 대신 샘플을 표시하지 않아요.';
+  const connectionTitle = authMode === 'checking' ? '로그인 상태를 확인하는 중이에요' : connecting ? 'Google 계정에 연결하는 중이에요' : loading ? 'Google 일정을 불러오고 있어요' : token ? syncFailed ? '일정 갱신에 실패했어요' : 'Google Calendar와 연결되어 있어요' : isSample ? '샘플 일정으로 둘러보고 있어요' : clientId ? 'Google 다시 연결이 필요해요' : '내 일정으로 한 주를 시작하세요';
+  const connectionDescription = token?.mode === 'server' ? `${syncTime ? `마지막 정상 갱신 ${syncTime} · ` : ''}로그인 유지 중 · 페이지를 다시 열어도 자동으로 연결됩니다.` : authMode === 'server' ? 'Google 계정으로 한 번 연결하면 다음 방문부터 자동으로 이어집니다. 로그아웃하거나 Google 연결이 만료되면 다시 연결해 주세요.' : token ? `${syncTime ? `마지막 정상 갱신 ${syncTime} · ` : ''}기본 캘린더 · 읽기 전용${syncFailed ? ' · 다시 불러오기를 눌러 주세요.' : ` · 연결 유효 ${formatTime(token.expires)}까지`}` : isSample ? '실제 일정이 아닌 예시입니다. Google Calendar를 연결하면 내 일정으로 전환돼요.' : '새로고침 또는 연결 만료 후에는 다시 연결해 주세요. 실제 일정 대신 샘플을 표시하지 않아요.';
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -216,13 +275,13 @@ function App() {
 
         {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={token ? () => setRefresh(n => n + 1) : connect} disabled={connecting || loading}>{token ? '다시 불러오기' : '다시 연결'}</button><button aria-label="오류 닫기" onClick={() => setError('')}><X size={16}/></button></div>}
         {storageError && <div className="error-banner" role="alert">{storageError}</div>}
-        <section className={`connection-banner ${personalDisconnected || syncFailed ? 'connection-attention' : ''}`} aria-label="캘린더 연결 상태"><span className="google-tile"><GoogleMark/></span><div><strong>{connectionTitle}</strong><p>{connectionDescription}</p></div><div className="connection-actions">{!token && !isSample && <button className="text-button" onClick={() => { setCalendarMode('sample'); setSyncFailed(false); setError(''); }}>샘플 보기</button>}<button className="light-button" onClick={token ? () => setRefresh(n => n + 1) : connect} disabled={loading || connecting}>{loading || connecting ? <LoaderCircle className="spin" size={16}/> : token ? <RefreshCw size={15}/> : <Link2 size={15}/>} {token ? '새로고침' : clientId && !isSample ? '다시 연결' : '캘린더 연결'}<ArrowUpRight size={15}/></button></div></section>
+        <section className={`connection-banner ${personalDisconnected || syncFailed ? 'connection-attention' : ''}`} aria-label="캘린더 연결 상태"><span className="google-tile"><GoogleMark/></span><div><strong>{connectionTitle}</strong><p>{connectionDescription}</p></div><div className="connection-actions">{!token && !isSample && <button className="text-button" onClick={() => { setCalendarMode('sample'); setSyncFailed(false); setError(''); }}>샘플 보기</button>}<button className="light-button" onClick={token ? () => setRefresh(n => n + 1) : connect} disabled={loading || connecting || authMode === 'checking'}>{loading || connecting ? <LoaderCircle className="spin" size={16}/> : token ? <RefreshCw size={15}/> : <Link2 size={15}/>} {token ? '새로고침' : clientId && !isSample ? '다시 연결' : '캘린더 연결'}<ArrowUpRight size={15}/></button></div></section>
 
         <section className="stats-grid" aria-label="주간 요약">
           {[{ label: offset === 0 ? '이번 주 일정' : '선택한 주 일정', value: weekEvents.length, unit: '개', icon: CalendarDays, tone: 'mint', note: token ? token.hasTasks ? 'Google 일정·할 일' : 'Google 기본 캘린더' : isSample ? '샘플 캘린더' : 'Google 연결 필요', sub: '한 주의 약속을 확인하세요' }, { label: '남은 할 일', value: totalOpenCount, unit: '개', icon: ListTodo, tone: 'blue', note: token?.hasTasks ? `Google ${remoteOpenCount} · 브라우저 ${openTasks.length}` : `브라우저 전체 ${tasks.length}개 중`, sub: '하나씩 가볍게 지워봐요' }, { label: '브라우저 마감', value: urgent, unit: '개', icon: Flag, tone: 'peach', note: '3일 이내 · 지연 포함', sub: '조금만 더 힘내볼까요?' }, { label: '완료한 할 일', value: completed, unit: '개', icon: CheckCheck, tone: 'purple', note: '잘하고 있어요!', sub: '작은 성취가 쌓이고 있어요' }].map(({ label, value, unit, icon: Icon, tone, note, sub }) => <article className="stat-card" key={label}><div className="stat-top"><span>{label}</span><span className={`stat-icon ${tone}`}><Icon size={18}/></span></div><div className="stat-value">{value}<span>{unit}</span><small>{note}</small></div><p>{sub}</p></article>)}
         </section>
 
-        {(view === 'dashboard' || view === 'tasks') && <GoogleTasksPanel token={token} lists={googleTaskData.lists} tasks={googleTaskData.tasks} loading={tasksLoading} error={tasksError || tasksPermissionError} lastSync={tasksLastSync} todayKey={todayKey} connecting={connecting} onConnect={() => connect(true)} onRefresh={() => setRefresh(n => n + 1)}/>}
+        {(view === 'dashboard' || view === 'tasks') && <GoogleTasksPanel token={token} lists={googleTaskData.lists} tasks={googleTaskData.tasks} loading={tasksLoading} error={tasksError || tasksPermissionError} lastSync={tasksLastSync} todayKey={todayKey} connecting={connecting || authMode === 'checking'} onConnect={() => connect(true)} onRefresh={() => setRefresh(n => n + 1)}/>}
 
         {(view === 'dashboard' || view === 'next') && <>
           {(view === 'dashboard' ? [0, 1] : [0]).map(weekIndex => {
@@ -252,7 +311,7 @@ function App() {
     </main>
 
     {modal === 'task' && <Modal title={editingTask ? '할 일 수정' : '새로운 할 일'} onClose={() => { setModal(null); setEditingTask(null); }}><TaskForm key={editingTask?.id || 'new'} task={editingTask} todayKey={todayKey} onSubmit={saveTask}/></Modal>}
-    {modal === 'settings' && <Modal title="Google Calendar 연결" onClose={() => setModal(null)}><div className="settings-body"><div className="settings-intro"><GoogleMark/><p>{wantGoogleTasks ? '기본 캘린더와 Google Tasks의 모든 할 일 목록을 읽기 전용으로 불러옵니다.' : '기본 캘린더의 이번 주와 다음 주 일정을 읽기 전용으로 불러옵니다.'}</p></div><label>Google OAuth 클라이언트 ID<input value={clientId} onChange={e => setClientId(e.target.value)} placeholder="…apps.googleusercontent.com" autoComplete="off"/></label><p className="form-note">Google Cloud Console에서 Calendar API를 활성화하고 웹 애플리케이션 OAuth 클라이언트를 만드세요. 승인된 JavaScript 원본에 현재 앱의 주소를 등록하고, 테스트 모드에서는 내 Google 계정을 테스트 사용자로 추가하세요.</p><a className="docs-link" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Google Cloud Console 열기<ExternalLink size={13}/></a><label className="completed-toggle tasks-permission"><input type="checkbox" checked={wantGoogleTasks} onChange={event => setWantGoogleTasks(event.target.checked)}/>Google Tasks 할 일도 함께 연결</label><div className="privacy-note"><Link2 size={16}/><p>클라이언트 ID는 공개 식별자입니다. 비밀번호나 클라이언트 보안 비밀번호를 입력하지 마세요. 접근 토큰은 메모리에만 유지되며 새로고침 후 다시 연결해야 합니다.</p></div>{error && <p className="inline-error" role="alert">{error}</p>}<div className="settings-actions">{token && <button className="light-button" onClick={disconnect}><Unplug size={15}/>연결 해제</button>}<button className="primary-button" disabled={connecting || !clientId.trim()} onClick={() => { try { localStorage.setItem('weekflow.google-client-id', clientId.trim()); } catch { setStorageError('클라이언트 ID를 저장하지 못했습니다.'); } connect(); }}>{connecting ? <LoaderCircle className="spin" size={16}/> : <GoogleMark/>}{connecting ? '연결 중…' : 'Google 계정으로 연결'}</button></div></div></Modal>}
+    {modal === 'settings' && <Modal title="Google Calendar 연결" onClose={() => setModal(null)}><div className="settings-body">{authMode === 'server' ? <><div className="settings-intro"><GoogleMark/><p>장기 로그인 연결입니다. 한 번 연결하면 다음 방문에 로그인 상태를 자동으로 복원합니다.</p></div>{serverInfo?.accountEmail && token && <p className="form-note">연결된 계정: {serverInfo.accountEmail}</p>}</> : <><div className="settings-intro"><GoogleMark/><p>{wantGoogleTasks ? '기본 캘린더와 Google Tasks의 모든 할 일 목록을 읽기 전용으로 불러옵니다.' : '기본 캘린더의 이번 주와 다음 주 일정을 읽기 전용으로 불러옵니다.'}</p></div><label>Google OAuth 클라이언트 ID<input value={clientId} onChange={e => setClientId(e.target.value)} placeholder="…apps.googleusercontent.com" autoComplete="off"/></label><p className="form-note">Google Cloud Console에서 Calendar API를 활성화하고 웹 애플리케이션 OAuth 클라이언트를 만드세요. 승인된 JavaScript 원본에 현재 앱의 주소를 등록하고, 테스트 모드에서는 내 Google 계정을 테스트 사용자로 추가하세요.</p><a className="docs-link" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Google Cloud Console 열기<ExternalLink size={13}/></a></>}<label className="completed-toggle tasks-permission"><input type="checkbox" checked={wantGoogleTasks} onChange={event => setWantGoogleTasks(event.target.checked)}/>Google Tasks 할 일도 함께 연결</label><div className="privacy-note"><Link2 size={16}/><p>클라이언트 ID는 공개 식별자입니다. 비밀번호나 클라이언트 보안 비밀번호를 입력하지 마세요. {authMode === 'server' ? 'Google 연결 정보는 서버에 암호화하여 보관하며 이 브라우저의 로그인 쿠키로 연결을 유지합니다. 공용 기기에서는 사용 후 연결을 해제해 주세요.' : '접근 토큰은 메모리에만 유지되며 새로고침 후 다시 연결해야 합니다.'}</p></div>{error && <p className="inline-error" role="alert">{error}</p>}<section className="task-backup"><h3>이 브라우저의 할 일 백업</h3><p className="form-note">새 주소로 옮길 때 다운로드 후 가져오세요. 같은 ID의 항목은 백업 내용으로 갱신하며 다른 기존 항목은 유지합니다.</p><button className="light-button" onClick={exportTasks}>할 일 백업 다운로드</button><label>할 일 백업 가져오기<input type="file" accept="application/json,.json" onChange={importTasks}/></label>{backupMessage && <p className="form-note" role="status">{backupMessage}</p>}</section><div className="settings-actions">{token && <button className="light-button" onClick={disconnect}><Unplug size={15}/>연결 해제</button>}<button className="primary-button" disabled={connecting || authMode === 'checking' || (authMode === 'browser' && !clientId.trim())} onClick={() => { if (authMode === 'browser') { try { localStorage.setItem('weekflow.google-client-id', clientId.trim()); } catch { setStorageError('클라이언트 ID를 저장하지 못했습니다.'); } } connect(); }}>{connecting ? <LoaderCircle className="spin" size={16}/> : <GoogleMark/>}{connecting ? '연결 중…' : 'Google 계정으로 연결'}</button></div></div></Modal>}
     {modal === 'event' && selectedEvent && <Modal title="일정 자세히 보기" onClose={() => setModal(null)}><div className="event-detail"><span className="detail-category">{selectedEvent.isGoogleTask ? 'Google Tasks · 마감일 기준' : token ? 'Google Calendar' : '샘플 일정'}</span><h3>{selectedEvent.title}</h3><p><CalendarDays size={17}/>{selectedEvent.isGoogleTask ? `${selectedEvent.start} 마감` : selectedEvent.allDay ? `${selectedEvent.start} ~ ${dateKey(addDays(new Date(`${selectedEvent.end}T00:00:00`), -1))} · 종일` : `${new Date(selectedEvent.start).toLocaleString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' })} – ${new Date(selectedEvent.end).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}</p>{selectedEvent.location && <p><MapPin size={17}/>{selectedEvent.location}</p>}{selectedEvent.description && <div className="event-description">{selectedEvent.description}</div>}{selectedEvent.link?.startsWith('https://') && <a className="primary-button" href={selectedEvent.link} target="_blank" rel="noreferrer">{selectedEvent.isGoogleTask ? 'Google Tasks에서 보기' : 'Google Calendar에서 보기'}<ExternalLink size={15}/></a>}</div></Modal>}
   </div>;
 }
