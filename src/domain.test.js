@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, dateKey, dayDifference, eventsForDay, groupDeadlines, normalizeGoogleEvent, taskDeadlineEvents, toggleDailyFocus, weekStart } from './domain.js';
+import { addDays, dateKey, dayDifference, eventsForDay, groupDeadlines, normalizeGoogleEvent, taskDeadlineEvents, weekStart } from './domain.js';
 
 test('weeks begin on Monday, including Sundays and year boundaries', () => {
   assert.equal(dateKey(weekStart(new Date(2026, 9, 25, 12))), '2026-10-19');
@@ -30,31 +30,6 @@ test('cancelled Google events are omitted and all-day events sort first', () => 
   const timed = { id: 'timed', start: '2026-10-21T10:00:00', end: '2026-10-21T11:00:00', allDay: false };
   const allDay = { id: 'all', start: '2026-10-21', end: '2026-10-22', allDay: true };
   assert.deepEqual(eventsForDay([timed, allDay], '2026-10-21').map(e => e.id), ['all', 'timed']);
-});
-
-test('daily focus permits three tasks and requires unpinning to replace a completed selection', () => {
-  const day = '2026-10-21';
-  const original = ['a', 'b', 'c', 'd'].map(id => ({ id, title: id, done: false }));
-  let tasks = original;
-  for (const id of ['a', 'b', 'c']) tasks = toggleDailyFocus(tasks, id, day);
-  assert.equal(tasks.filter(task => task.focusDate === day).length, 3);
-  assert.equal(toggleDailyFocus(tasks, 'd', day), tasks);
-  tasks = tasks.map(task => task.id === 'a' ? { ...task, done: true } : task);
-  assert.equal(toggleDailyFocus(tasks, 'd', day), tasks);
-  tasks = toggleDailyFocus(tasks, 'a', day);
-  tasks = toggleDailyFocus(tasks, 'd', day);
-  assert.deepEqual(tasks.filter(task => task.focusDate === day).map(task => task.id), ['b', 'c', 'd']);
-  assert.equal(tasks.find(task => task.id === 'a').done, true);
-  assert.equal(original.some(task => task.focusDate), false, 'original saved tasks remain unchanged');
-});
-
-test('focus starts fresh each day without deleting yesterday’s tasks or changing completion', () => {
-  const tasks = ['a', 'b', 'c'].map(id => ({ id, done: false, focusDate: '2026-10-21' }));
-  const next = toggleDailyFocus(tasks, 'a', '2026-10-22');
-  assert.equal(next.filter(task => task.focusDate === '2026-10-22').length, 1);
-  assert.equal(next.length, 3);
-  assert.equal(next.find(task => task.id === 'b').focusDate, '2026-10-21');
-  assert.equal(toggleDailyFocus([...next, { id: 'done', done: true }], 'done', '2026-10-22').at(-1).focusDate, undefined);
 });
 
 test('deadline groups omit completed tasks and separate overdue, today and future in date order', () => {

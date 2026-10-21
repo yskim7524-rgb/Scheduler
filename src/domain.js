@@ -26,14 +26,6 @@ export function dayDifference(a, b) {
 
 export const PRIORITY = { high: '높음', medium: '보통', low: '낮음' };
 
-export function toggleDailyFocus(tasks, id, day) {
-  const task = tasks.find(item => item.id === id);
-  if (!task) return tasks;
-  if (task.focusDate === day) return tasks.map(item => item.id === id ? { ...item, focusDate: null } : item);
-  if (task.done || tasks.filter(item => item.focusDate === day).length >= 3) return tasks;
-  return tasks.map(item => item.id === id ? { ...item, focusDate: day } : item);
-}
-
 export function groupDeadlines(tasks, day) {
   const groups = { overdue: [], today: [], upcoming: [] };
   for (const task of [...tasks].filter(item => !item.done).sort((a, b) => a.due.localeCompare(b.due))) {

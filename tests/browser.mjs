@@ -82,26 +82,18 @@ try {
   await list.getByRole('button', { name: '리뷰 피드백 내일로 미루기', exact: true }).click();
   assert.equal((await savedTasks(page)).find(task => task.id === 'b').due, '2026-10-22');
 
-  for (const title of ['기획안 최종 제출', '리뷰 피드백', '자료 읽기']) await list.getByRole('button', { name: `${title} 오늘 집중 선택`, exact: true }).click();
-  const focus = page.getByRole('region', { name: '오늘 집중할 일', exact: true });
-  assert.equal(await focus.locator('.task-row').count(), 3);
-  await list.getByRole('button', { name: '다음 주 준비 오늘 집중 선택', exact: true }).click();
-  await focus.getByRole('status').getByText(/최대 3개/).waitFor();
-  assert.equal((await savedTasks(page)).filter(task => task.focusDate === '2026-10-21').length, 3);
-  await focus.getByRole('button', { name: '기획안 최종 제출 완료', exact: true }).click();
-  await focus.getByText('1개 완료 · 2개 남음', { exact: true }).waitFor();
-  await focus.getByRole('button', { name: '기획안 최종 제출 오늘 집중 해제', exact: true }).click();
-  await list.getByRole('button', { name: '다음 주 준비 오늘 집중 선택', exact: true }).click();
+  assert.equal(await page.getByRole('region', { name: '오늘 집중할 일', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: /오늘 집중/ }).count(), 0);
+  await list.getByRole('button', { name: '기획안 최종 제출 완료', exact: true }).click();
   await page.reload();
-  assert.equal(await focus.locator('.task-row').count(), 3);
-  await focus.getByRole('button', { name: '리뷰 피드백 수정', exact: true }).click();
+  await navigate(page, /^해야 할 일/);
+  assert.equal((await savedTasks(page)).find(task => task.id === 'a').done, true);
+  await list.getByRole('button', { name: '리뷰 피드백 수정', exact: true }).click();
   await page.getByLabel('무엇을 해야 하나요?').fill('리뷰 최종 반영');
   await page.getByRole('button', { name: '변경 사항 저장', exact: true }).click();
-  assert.equal((await savedTasks(page)).find(task => task.id === 'b').focusDate, '2026-10-21');
 
   await page.clock.setSystemTime(new Date('2026-10-22T03:00:00Z'));
   await page.clock.runFor(60100);
-  assert.equal(await focus.locator('.task-row').count(), 0, 'yesterday’s focus is cleared from today');
   assert.equal((await savedTasks(page)).find(task => task.id === 'a').done, true);
   await navigate(page, /^마감 모아보기/);
   await page.getByRole('region', { name: '오늘 마감', exact: true }).getByText('리뷰 최종 반영', { exact: true }).waitFor();
@@ -133,7 +125,7 @@ try {
   await navigate(page, '다음 주 일정');
   assert.equal(await page.locator('.agenda-event').count(), 3);
   await page.context().close();
-  console.log('PASS: legacy data, editing/cancel, postpone, 3-focus limit, completion/unpin, persistence, midnight rollover, deadline groups, title validation, delete, mobile list/grid and event details.');
+  console.log('PASS: legacy data, editing/cancel, postpone, focus controls removed, completion, persistence, midnight rollover, deadline groups, title validation, delete, mobile list/grid and event details.');
 
   const googlePage = await newPage();
   let oauthCalls = 0;

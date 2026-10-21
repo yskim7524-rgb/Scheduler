@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowUpRight, CalendarDays, CheckCheck, ChevronLeft, ChevronRight, ExternalLink, Flag, LayoutDashboard, Link2, List, ListTodo, LoaderCircle, MapPin, MoreHorizontal, Plus, RefreshCw, Settings2, Sparkles, Unplug, X } from 'lucide-react';
-import { addDays, dateKey, dayDifference, demoEvents, demoTasks, eventsForDay, groupDeadlines, PRIORITY, taskDeadlineEvents, toggleDailyFocus, weekStart } from './domain.js';
+import { addDays, dateKey, dayDifference, demoEvents, demoTasks, eventsForDay, groupDeadlines, PRIORITY, taskDeadlineEvents, weekStart } from './domain.js';
 import { fetchCalendarEvents, fetchGoogleTasks, loadGoogleIdentity, requestAccess, TASKS_SCOPE } from './google.js';
 import GoogleTasksPanel from './GoogleTasksPanel.jsx';
-import { CalendarAgenda, DeadlineGroups, FocusPanel, TaskForm, TaskRow } from './components.jsx';
+import { CalendarAgenda, DeadlineGroups, TaskForm, TaskRow } from './components.jsx';
 import './styles.css';
 import './improvements.css';
 import './google-tasks.css';
@@ -54,7 +54,6 @@ function App() {
   const [modal, setModal] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
-  const [focusNotice, setFocusNotice] = useState('');
   const [calendarLayout, setCalendarLayout] = useState(null);
   const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 700px)').matches);
   const [calendarMode, setCalendarMode] = useState(initialCalendarMode);
@@ -99,7 +98,6 @@ function App() {
   useEffect(() => {
     try { localStorage.setItem('weekflow.calendar-mode', calendarMode); } catch { /* Optional preference. */ }
   }, [calendarMode]);
-  useEffect(() => { setFocusNotice(''); }, [todayKey]);
   useEffect(() => {
     const media = window.matchMedia('(max-width: 700px)');
     const update = () => setIsMobile(media.matches);
@@ -189,15 +187,6 @@ function App() {
     setEditingTask(null);
     setModal(null);
   }
-  function pinTask(id) {
-    const task = tasks.find(item => item.id === id);
-    if (task?.focusDate !== todayKey && tasks.filter(item => item.focusDate === todayKey).length >= 3) {
-      setFocusNotice('오늘 집중할 일은 최대 3개예요. 기존 항목의 핀을 해제한 뒤 선택해 주세요.');
-      return;
-    }
-    setTasks(previous => toggleDailyFocus(previous, id, todayKey));
-    setFocusNotice(task?.focusDate === todayKey ? '오늘 집중에서 해제했어요.' : '오늘 집중할 일에 추가했어요.');
-  }
   const postponeTask = id => setTasks(previous => previous.map(task => task.id === id ? { ...task, due: dateKey(addDays(today, 1)) } : task));
   function showEvent(event) { setSelectedEvent(event); setModal('event'); }
   function openView(nextView) { setView(nextView); if (nextView === 'next') setOffset(1); else if (nextView === 'dashboard') setOffset(0); }
@@ -236,7 +225,6 @@ function App() {
         </section>
 
         {(view === 'dashboard' || view === 'tasks') && <GoogleTasksPanel token={token} lists={googleTaskData.lists} tasks={googleTaskData.tasks} loading={tasksLoading} error={tasksError || tasksPermissionError} lastSync={tasksLastSync} todayKey={todayKey} connecting={connecting} onConnect={() => connect(true)} onRefresh={() => setRefresh(n => n + 1)}/>}
-        {(view === 'dashboard' || view === 'tasks') && <FocusPanel tasks={tasks} todayKey={todayKey} notice={focusNotice} onChoose={() => { openView('tasks'); setShowCompleted(false); }} onToggle={toggleTask} onEdit={openTask} onPin={pinTask}/>}
 
         {(view === 'dashboard' || view === 'next') && <>
           <section className={`panel calendar-panel layout-${effectiveLayout}`}><div className="panel-heading"><div className="section-title"><CalendarDays size={19}/><h2>{offset === 0 ? '이번 주 일정' : offset === 1 ? '다음 주 일정' : '주간 일정'}</h2><span className="count-badge">{weekEvents.length}</span></div><div className="week-controls"><span>{start.getFullYear()}. {start.getMonth() + 1}. {start.getDate()} – {end.getMonth() + 1}. {end.getDate()}</span><div className="calendar-view-toggle" aria-label="일정 보기 방식"><button aria-label="주간 표 보기" aria-pressed={effectiveLayout === 'week'} onClick={() => setCalendarLayout('week')}><CalendarDays size={14}/><span>주간</span></button><button aria-label="일정 목록 보기" aria-pressed={effectiveLayout === 'list'} onClick={() => setCalendarLayout('list')}><List size={14}/><span>목록</span></button></div><button className="today-button" onClick={() => setOffset(0)}>이번 주</button><button className="icon-button" aria-label="이전 주" onClick={() => setOffset(n => n - 1)}><ChevronLeft size={18}/></button><button className="icon-button" aria-label="다음 주" onClick={() => setOffset(n => n + 1)}><ChevronRight size={18}/></button></div></div>
@@ -246,14 +234,14 @@ function App() {
             })}</div></div><CalendarAgenda events={events} start={start} todayKey={todayKey} loading={loading} failed={syncFailed} personalDisconnected={personalDisconnected} onSelect={showEvent}/><div className="calendar-footer"><span><i className="legend-dot mint-dot"/>{token ? 'Google 일정' : isSample ? '업무 일정' : '내 캘린더'}{isSample && <><i className="legend-dot purple-dot"/>개인 일정<i className="legend-dot blue-dot"/>집중 시간</>}</span><small>{token ? '시간은 기기의 현지 시간 기준으로 표시됩니다' : isSample ? '샘플 데이터 · Google 연결 시 실제 일정으로 전환' : 'Google 연결 후 내 일정이 표시됩니다'}</small></div>
           </section>
           <div className="lower-grid">
-            <section className="panel task-panel"><div className="panel-heading"><div className="section-title"><ListTodo size={19}/><h2>브라우저 할 일</h2><span className="count-badge">{openTasks.length}</span></div><button className="text-button" onClick={() => openView('tasks')}>전체 보기<ChevronRight size={15}/></button></div><div className="task-tabs">{[['all', '전체'], ['open', '진행 중'], ['done', '완료']].map(([key, label]) => <button key={key} className={taskFilter === key ? 'selected' : ''} onClick={() => setTaskFilter(key)}>{label}</button>)}</div><div className="task-list">{visibleTasks.slice(0, 4).map(task => <TaskRow key={task.id} task={task} onToggle={toggleTask} onEdit={openTask} onPin={pinTask} onPostpone={postponeTask} todayKey={todayKey}/>)}{!visibleTasks.length && <div className="empty-state"><CheckCheck size={26}/><p>표시할 할 일이 없어요.</p></div>}</div><button className="add-task-line" onClick={() => openTask()}><Plus size={16}/>새로운 할 일 추가하기</button></section>
+            <section className="panel task-panel"><div className="panel-heading"><div className="section-title"><ListTodo size={19}/><h2>브라우저 할 일</h2><span className="count-badge">{openTasks.length}</span></div><button className="text-button" onClick={() => openView('tasks')}>전체 보기<ChevronRight size={15}/></button></div><div className="task-tabs">{[['all', '전체'], ['open', '진행 중'], ['done', '완료']].map(([key, label]) => <button key={key} className={taskFilter === key ? 'selected' : ''} onClick={() => setTaskFilter(key)}>{label}</button>)}</div><div className="task-list">{visibleTasks.slice(0, 4).map(task => <TaskRow key={task.id} task={task} onToggle={toggleTask} onEdit={openTask} onPostpone={postponeTask} todayKey={todayKey}/>)}{!visibleTasks.length && <div className="empty-state"><CheckCheck size={26}/><p>표시할 할 일이 없어요.</p></div>}</div><button className="add-task-line" onClick={() => openTask()}><Plus size={16}/>새로운 할 일 추가하기</button></section>
             <section className="panel deadline-panel"><div className="panel-heading"><div className="section-title"><Flag size={18}/><h2>마감 한눈에 보기</h2></div><span className="muted-small">오늘과 지난 마감을 구분해요</span></div><DeadlineGroups groups={deadlineGroups} todayKey={todayKey} compact onEdit={openTask}/>{!deadlines.length && <div className="empty-state"><Sparkles size={26}/><p>남은 마감이 없어요. 잘했어요!</p></div>}<button className="deadline-more" onClick={() => openView('deadlines')}>모든 마감 보기<ArrowUpRight size={14}/></button></section>
           </div>
           <section className="next-week-strip"><span className="next-week-icon"><CalendarDays size={20}/></span><div><strong>다음 주, 미리 살펴볼까요?</strong><p>{shortDate(nextStart)} – {shortDate(addDays(nextStart, 6))} <span>·</span> {nextEvents.length}개의 일정이 기다리고 있어요</p></div><div className="next-previews">{nextEvents.slice(0, 2).map(event => <button key={event.id} onClick={() => showEvent(event)}><span className="legend-dot mint-dot"/>{event.title}</button>)}</div><button className="icon-button next-arrow" aria-label="선택한 주의 다음 주 보기" onClick={() => setOffset(n => n + 1)}><ChevronRight size={20}/></button></section>
         </>}
 
-        {view === 'tasks' && <section className="panel full-panel"><div className="panel-heading"><div className="section-title"><ListTodo size={19}/><h2>이 브라우저의 할 일</h2></div><label className="completed-toggle"><input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)}/>완료한 항목 보기</label></div><div className="task-list">{tasks.filter(task => showCompleted || !task.done).map(task => <TaskRow key={task.id} task={task} onToggle={toggleTask} onEdit={openTask} onPin={pinTask} onPostpone={postponeTask} onDelete={id => setTasks(previous => previous.filter(t => t.id !== id))} todayKey={todayKey}/>)}{!tasks.some(task => showCompleted || !task.done) && <div className="empty-state"><CheckCheck size={32}/><p>할 일을 모두 마쳤어요. 새로운 계획을 추가해 보세요.</p></div>}</div><button className="add-task-line" onClick={() => openTask()}><Plus size={17}/>새로운 할 일 추가하기</button></section>}
-        {view === 'deadlines' && <section className="panel full-panel"><div className="panel-heading"><div className="section-title"><Flag size={19}/><h2>오늘 · 지난 마감 · 다가오는 마감</h2><span className="count-badge">{deadlines.length}</span></div><span className="muted-small">완료하지 않은 할 일</span></div><DeadlineGroups groups={deadlineGroups} todayKey={todayKey} onToggle={toggleTask} onEdit={openTask} onPin={pinTask} onPostpone={postponeTask}/>{!deadlines.length && <div className="empty-state"><Sparkles size={32}/><p>남은 마감이 없어요.</p></div>}{focusNotice && <p className="focus-notice" role="status">{focusNotice}</p>}</section>}
+        {view === 'tasks' && <section className="panel full-panel"><div className="panel-heading"><div className="section-title"><ListTodo size={19}/><h2>이 브라우저의 할 일</h2></div><label className="completed-toggle"><input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)}/>완료한 항목 보기</label></div><div className="task-list">{tasks.filter(task => showCompleted || !task.done).map(task => <TaskRow key={task.id} task={task} onToggle={toggleTask} onEdit={openTask} onPostpone={postponeTask} onDelete={id => setTasks(previous => previous.filter(t => t.id !== id))} todayKey={todayKey}/>)}{!tasks.some(task => showCompleted || !task.done) && <div className="empty-state"><CheckCheck size={32}/><p>할 일을 모두 마쳤어요. 새로운 계획을 추가해 보세요.</p></div>}</div><button className="add-task-line" onClick={() => openTask()}><Plus size={17}/>새로운 할 일 추가하기</button></section>}
+        {view === 'deadlines' && <section className="panel full-panel"><div className="panel-heading"><div className="section-title"><Flag size={19}/><h2>오늘 · 지난 마감 · 다가오는 마감</h2><span className="count-badge">{deadlines.length}</span></div><span className="muted-small">완료하지 않은 할 일</span></div><DeadlineGroups groups={deadlineGroups} todayKey={todayKey} onToggle={toggleTask} onEdit={openTask} onPostpone={postponeTask}/>{!deadlines.length && <div className="empty-state"><Sparkles size={32}/><p>남은 마감이 없어요.</p></div>}</section>}
         <footer className="page-footer"><span>차근차근, 나만의 속도로.</span><span>weekflow <span>✳</span> a little clarity for your week</span></footer>
       </div>
     </main>
