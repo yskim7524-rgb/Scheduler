@@ -44,7 +44,7 @@ export function CalendarAgenda({ events, start, todayKey, loading, failed, perso
     {Array.from({ length: 7 }, (_, index) => {
       const date = addDays(start, index); const key = dateKey(date); const dayEvents = eventsForDay(events, key);
       return <section className={`agenda-day ${key === todayKey ? 'agenda-today' : ''}`} key={key}>
-        <div className="agenda-date"><strong>{date.getDate()}</strong><span>{date.toLocaleDateString('ko-KR', { month: 'long', weekday: 'short' })}</span>{key === todayKey && <small>오늘</small>}</div>
+        <div className="agenda-date"><strong>{date.getDate()}</strong><span>{date.getMonth() + 1}월 · {date.toLocaleDateString('ko-KR', { weekday: 'short' })}</span>{key === todayKey && <small>오늘</small>}</div>
         <div className="agenda-events">{loading ? <p className="agenda-empty">불러오는 중…</p> : failed ? <p className="agenda-empty">일정 조회 실패 · 위에서 다시 불러오세요</p> : personalDisconnected ? <p className="agenda-empty">Google Calendar 연결이 필요해요</p> : dayEvents.length ? dayEvents.map(event => <button className={`agenda-event ${event.category}`} key={event.id} onClick={() => onSelect(event)}><span className="agenda-time"><Clock3 size={12}/>{event.allDay ? '종일' : `${formatTime(event.start)} – ${formatTime(event.end)}`}</span><strong>{event.title}</strong>{event.location && <small><MapPin size={11}/>{event.location}</small>}</button>) : <p className="agenda-empty">등록된 일정이 없어요</p>}</div>
       </section>;
     })}
