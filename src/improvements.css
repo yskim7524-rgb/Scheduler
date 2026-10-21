@@ -10,6 +10,7 @@
 .full-panel .task-list { padding-bottom: 5px; }
 
 /* Calendar list view */
+.calendar-panel + .calendar-panel { margin-top: 24px; }
 .calendar-panel > .panel-heading { flex-wrap: wrap; }
 .week-controls { flex-wrap: wrap; row-gap: 8px; }
 .calendar-view-toggle { display: flex; align-items: center; padding: 3px; border: 1px solid #e5ebe1; border-radius: 6px; gap: 2px; margin-right: 8px; background: #fafcf8; }
@@ -64,6 +65,7 @@
   .task-actions .icon-button { width: 27px; min-width: 27px; }
 }
 @media (max-width: 700px) {
+  .calendar-panel + .calendar-panel { margin-top: 18px; }
   .task-list { padding-inline: 15px; }
   .task-row { padding-block: 12px; gap: 7px; }
   .task-info strong { font-size: 12px; }

@@ -65,6 +65,19 @@ try {
   await page.goto(baseURL);
   await page.getByRole('heading', { name: '좋은 한 주를 만들어봐요' }).waitFor();
   assert.equal((await savedTasks(page)).length, legacyTasks.length, 'existing tasks are preserved');
+  const thisWeek = page.getByRole('region', { name: '이번 주 일정', exact: true });
+  const nextWeek = page.getByRole('region', { name: '다음 주 일정', exact: true });
+  assert.equal(await thisWeek.locator('.day-column').count(), 7);
+  assert.equal(await nextWeek.locator('.day-column').count(), 7);
+  assert.equal(await thisWeek.locator('.event-card').count(), 9);
+  assert.equal(await nextWeek.locator('.event-card').count(), 3);
+  assert.equal(await page.evaluate(() => {
+    const panels = document.querySelectorAll('.calendar-panel');
+    return panels[0].nextElementSibling === panels[1];
+  }), true, 'next week is immediately below this week');
+  await nextWeek.getByRole('button', { name: /다음 스프린트 미팅/ }).click();
+  await page.getByRole('dialog').getByRole('heading', { name: '다음 스프린트 미팅', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
   await navigate(page, /^해야 할 일/);
   const list = page.locator('.full-panel .task-list');
   await list.getByRole('button', { name: '기획안 정리 수정', exact: true }).click();
@@ -113,19 +126,21 @@ try {
   assert.equal((await savedTasks(page)).length, legacyTasks.length);
   await navigate(page, '대시보드');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('.calendar-agenda').waitFor({ state: 'visible' });
+  await page.locator('.calendar-agenda').first().waitFor({ state: 'visible' });
+  await page.locator('.calendar-agenda').nth(1).waitFor({ state: 'visible' });
+  assert.equal(await nextWeek.locator('.agenda-event').count(), 3);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   const agendaEvent = page.locator('.agenda-event').first();
   await agendaEvent.click();
   await page.getByRole('dialog').getByRole('heading', { name: '일정 자세히 보기' }).waitFor();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '주간 표 보기', exact: true }).click();
-  await page.locator('.calendar-scroll').waitFor({ state: 'visible' });
+  await page.locator('.calendar-scroll').first().waitFor({ state: 'visible' });
   await page.getByRole('button', { name: '일정 목록 보기', exact: true }).click();
   await navigate(page, '다음 주 일정');
   assert.equal(await page.locator('.agenda-event').count(), 3);
   await page.context().close();
-  console.log('PASS: legacy data, editing/cancel, postpone, focus controls removed, completion, persistence, midnight rollover, deadline groups, title validation, delete, mobile list/grid and event details.');
+  console.log('PASS: legacy data, editing/cancel, postpone, focus controls removed, completion, persistence, midnight rollover, deadline groups, title validation, delete, two adjacent weeks, mobile list/grid and next-week event details.');
 
   const googlePage = await newPage();
   let oauthCalls = 0;
@@ -170,7 +185,8 @@ try {
   await googlePage.getByText('Google 다시 연결이 필요해요', { exact: true }).waitFor();
   assert.equal(await googlePage.locator('.event-card').count(), 0);
   await googlePage.getByRole('button', { name: '샘플 보기', exact: true }).click();
-  assert.equal(await googlePage.locator('.event-card').count(), 9);
+  assert.equal(await googlePage.getByRole('region', { name: '이번 주 일정', exact: true }).locator('.event-card').count(), 9);
+  assert.equal(await googlePage.getByRole('region', { name: '다음 주 일정', exact: true }).locator('.event-card').count(), 3);
   await googlePage.getByText('샘플 일정으로 둘러보고 있어요', { exact: true }).waitFor();
   const tasksPage = await newPage(legacyTasks);
   let tasksFailure = 0;
